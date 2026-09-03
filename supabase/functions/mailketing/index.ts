@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { withSupabase } from "npm:@supabase/server";
 
 const MAILKETING_URL = "https://stackapi.mailketing.co.id/api/v2";
 const CORS = {
@@ -16,20 +16,13 @@ const interpolate = (value: string, variables: Record<string, unknown>) =>
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-    if (!bearer) return json({ success: false, message: "Sesi login tidak ditemukan." }, 401);
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const secretMap = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
-    const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? secretMap.default;
-    const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: authData, error: authError } = await admin.auth.getUser(bearer);
-    if (authError || !authData.user) return json({ success: false, message: "Sesi tidak valid atau sudah berakhir." }, 401);
-    const userId = authData.user.id;
-      const { data: profile } = await admin
+    return withSupabase({ auth: "user" }, async (req, ctx) => {
+      const userId = ctx.userClaims?.sub;
+      const { data: profile } = await ctx.supabaseAdmin
         .from("profiles").select("role,active").eq("id", userId).single();
       if (!profile?.active) return json({ success: false, message: "Akun tidak aktif." }, 403);
 
-      const input = await request.json().catch(() => ({}));
+      const input = await req.json().catch(() => ({}));
       const action = String(input.action ?? "");
       const adminOnly = ["save-settings", "retry", "process-queue"];
       if (adminOnly.includes(action) && profile.role !== "admin") {
@@ -39,9 +32,9 @@ export default {
       if (action === "save-settings") {
         const token = String(input.token ?? "").trim();
         if (token.length < 8) return json({ success: false, message: "Token tidak valid." }, 422);
-        const { error } = await admin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
+        const { error } = await ctx.supabaseAdmin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
         if (error) return json({ success: false, message: error.message }, 400);
-        await admin.from("app_settings").update({
+        await ctx.supabaseAdmin.from("app_settings").update({
           default_from_name: input.default_from_name || null,
           default_from_email: input.default_from_email || null,
           corporate_mode: Boolean(input.corporate_mode),
@@ -51,7 +44,7 @@ export default {
         return json({ success: true, message: "Pengaturan API tersimpan dengan aman." });
       }
 
-      const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
+      const { data: token, error: tokenError } = await ctx.supabaseAdmin.rpc("read_mailketing_token");
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = async (path: string, body?: unknown, corporate = false) => {
         const response = await fetch(`${MAILKETING_URL}${corporate ? "/corporate" : ""}${path}`, {
@@ -86,7 +79,7 @@ export default {
           return json({ success: false, message: "Data kampanye belum lengkap." }, 422);
         }
         const status = campaign.scheduled_at ? "scheduled" : "processing";
-        const { data: created, error } = await admin.from("campaigns").insert({
+        const { data: created, error } = await ctx.supabaseAdmin.from("campaigns").insert({
           ...campaign, status, total_count: recipients.length, created_by: userId,
         }).select("id").single();
         if (error) return json({ success: false, message: error.message }, 400);
@@ -97,26 +90,26 @@ export default {
           variables: item.variables ?? {},
         }));
         for (let i = 0; i < rows.length; i += 500) {
-          const { error: recipientError } = await admin.from("campaign_recipients").insert(rows.slice(i, i + 500));
+          const { error: recipientError } = await ctx.supabaseAdmin.from("campaign_recipients").insert(rows.slice(i, i + 500));
           if (recipientError) return json({ success: false, message: recipientError.message }, 400);
         }
-        await admin.from("audit_logs").insert({ user_id: userId, action: "campaign.created", entity_type: "campaign", entity_id: created.id, metadata: { count: rows.length } });
+        await ctx.supabaseAdmin.from("audit_logs").insert({ user_id: userId, action: "campaign.created", entity_type: "campaign", entity_id: created.id, metadata: { count: rows.length } });
         return json({ success: true, campaign_id: created.id, status, message: campaign.scheduled_at ? "Kampanye berhasil dijadwalkan." : "Kampanye dibuat dan siap diproses." });
       }
       if (action === "retry") {
-        await admin.from("campaign_recipients").update({ status: "pending", last_error: null, updated_at: new Date().toISOString() }).eq("campaign_id", input.campaign_id).eq("status", "failed");
-        await admin.from("campaigns").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", input.campaign_id);
+        await ctx.supabaseAdmin.from("campaign_recipients").update({ status: "pending", last_error: null, updated_at: new Date().toISOString() }).eq("campaign_id", input.campaign_id).eq("status", "failed");
+        await ctx.supabaseAdmin.from("campaigns").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", input.campaign_id);
         return json({ success: true, message: "Email gagal dimasukkan kembali ke antrean." });
       }
       if (action === "process-queue") {
         const now = new Date().toISOString();
-        await admin.from("campaigns").update({ status: "processing" }).eq("status", "scheduled").lte("scheduled_at", now);
-        const { data: campaigns } = await admin.from("campaigns").select("*").eq("status", "processing").limit(5);
+        await ctx.supabaseAdmin.from("campaigns").update({ status: "processing" }).eq("status", "scheduled").lte("scheduled_at", now);
+        const { data: campaigns } = await ctx.supabaseAdmin.from("campaigns").select("*").eq("status", "processing").limit(5);
         let processed = 0;
         for (const campaign of campaigns ?? []) {
-          const { data: recipients } = await admin.from("campaign_recipients").select("*").eq("campaign_id", campaign.id).eq("status", "pending").limit(50);
+          const { data: recipients } = await ctx.supabaseAdmin.from("campaign_recipients").select("*").eq("campaign_id", campaign.id).eq("status", "pending").limit(50);
           for (const recipient of recipients ?? []) {
-            await admin.from("campaign_recipients").update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now }).eq("id", recipient.id).eq("status", "pending");
+            await ctx.supabaseAdmin.from("campaign_recipients").update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now }).eq("id", recipient.id).eq("status", "pending");
             const variables = { email: recipient.email, ...(recipient.variables ?? {}) };
             const response = await provider("/send", {
               from_name: campaign.from_name,
@@ -128,22 +121,22 @@ export default {
               ...(campaign.attachments?.[1] ? { attach2: campaign.attachments[1] } : {}),
               ...(campaign.attachments?.[2] ? { attach3: campaign.attachments[2] } : {}),
             });
-            await admin.from("campaign_recipients").update(response.success ? {
+            await ctx.supabaseAdmin.from("campaign_recipients").update(response.success ? {
               status: "queued", message_id: response.data?.message_id ?? null, provider_message: response.message, queued_at: new Date().toISOString(), updated_at: new Date().toISOString(),
             } : {
               status: "failed", last_error: response.message, provider_message: response.message, updated_at: new Date().toISOString(),
             }).eq("id", recipient.id);
             processed++;
           }
-          const { data: all } = await admin.from("campaign_recipients").select("status").eq("campaign_id", campaign.id);
+          const { data: all } = await ctx.supabaseAdmin.from("campaign_recipients").select("status").eq("campaign_id", campaign.id);
           const sent = all?.filter((r: any) => ["queued", "sent"].includes(r.status)).length ?? 0;
           const failed = all?.filter((r: any) => r.status === "failed").length ?? 0;
           const pending = all?.filter((r: any) => ["pending", "processing"].includes(r.status)).length ?? 0;
-          await admin.from("campaigns").update({ sent_count: sent, failed_count: failed, status: pending ? "processing" : failed ? (sent ? "partial" : "failed") : "completed", completed_at: pending ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", campaign.id);
+          await ctx.supabaseAdmin.from("campaigns").update({ sent_count: sent, failed_count: failed, status: pending ? "processing" : failed ? (sent ? "partial" : "failed") : "completed", completed_at: pending ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", campaign.id);
         }
         return json({ success: true, processed, message: `${processed} email diproses.` });
       }
       return json({ success: false, message: "Aksi tidak dikenali." }, 400);
-    
+    })(request);
   },
 };
