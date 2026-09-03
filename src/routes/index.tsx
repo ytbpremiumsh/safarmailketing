@@ -1,8 +1,3 @@
-npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
-
-  ../../../tmp/full-index.js  36.4kb
-
-⚡ Done in 3ms
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, BarChart3, CheckCircle2, Clock3, FileSpreadsheet, History, KeyRound, LayoutTemplate, Loader2, LogOut, Mail, RefreshCw, Send, Settings, ShieldCheck, Upload, Users } from "lucide-react";
