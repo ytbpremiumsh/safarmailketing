@@ -1,3 +1,8 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+  ../../../tmp/full-index.js  36.4kb
+
+⚡ Done in 3ms
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, BarChart3, CheckCircle2, Clock3, FileSpreadsheet, History, KeyRound, LayoutTemplate, Loader2, LogOut, Mail, RefreshCw, Send, Settings, ShieldCheck, Upload, Users } from "lucide-react";
@@ -32,7 +37,7 @@ async function api(path: string, token: string, init?: RequestInit) {
 function App() {
   const [session,setSession]=useState<Session|null>(null);
   const [ready,setReady]=useState(false);
-  useEffect(()=>{const raw=localStorage.getItem("safar-session");if(raw)try{setSession(JSON.parse(raw))}catch{}setReady(true)},[]);
+  useEffect(()=>{const restore=async()=>{const raw=localStorage.getItem("safar-session");if(!raw){setReady(true);return}try{const saved=JSON.parse(raw) as Session;const res=await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`,{method:"POST",headers:headers(),body:JSON.stringify({refresh_token:saved.refresh_token})});if(!res.ok)throw new Error("Sesi berakhir");const fresh=await res.json();localStorage.setItem("safar-session",JSON.stringify(fresh));setSession(fresh)}catch{localStorage.removeItem("safar-session")}finally{setReady(true)}};restore()},[]);
   if(!ready)return <Center><Loader2 className="animate-spin text-emerald-600"/></Center>;
   if(!session)return <Auth onSession={(s)=>{localStorage.setItem("safar-session",JSON.stringify(s));setSession(s)}}/>;
   return <Dashboard session={session} onLogout={()=>{localStorage.removeItem("safar-session");setSession(null)}}/>;
