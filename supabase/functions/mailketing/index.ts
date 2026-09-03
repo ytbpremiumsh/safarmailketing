@@ -32,7 +32,7 @@ export default {
       if (action === "save-settings") {
         const token = String(input.token ?? "").trim();
         if (token.length < 8) return json({ success: false, message: "Token tidak valid." }, 422);
-        const { error } = await ctx.supabaseAdmin.rpc("store_mailketing_token", { p_token: token });
+        const { error } = await ctx.supabaseAdmin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
         if (error) return json({ success: false, message: error.message }, 400);
         await ctx.supabaseAdmin.from("app_settings").update({
           default_from_name: input.default_from_name || null,
