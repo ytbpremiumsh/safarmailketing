@@ -22,10 +22,15 @@ export const Route = createFileRoute("/")({
   component: App,
 });
 
-async function api(path: string, token: string, init?: RequestInit) {
+const pause = (ms:number) => new Promise(resolve=>setTimeout(resolve,ms));
+function tokenIssuedAt(token:string){try{const value=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return Number(JSON.parse(atob(value)).iat)*1000}catch{return 0}}
+async function api(path: string, token: string, init?: RequestInit, retry=true) {
+  if(path.includes('/functions/')){const age=Date.now()-tokenIssuedAt(token);if(age<2000)await pause(Math.min(2500,2000-age))}
   const response = await fetch(`${SB_URL}${path}`, { ...init, headers: { ...headers(token), ...(init?.headers ?? {}) } });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(data?.message || data?.msg || data?.error_description || data?.error || `HTTP ${response.status}`);
+  const message=String(data?.message||data?.msg||data?.error_description||data?.error||"");
+  if(!response.ok&&retry&&/issued at.*future|not valid yet|jwt.*future/i.test(message)){await pause(2500);return api(path,token,init,false)}
+  if (!response.ok) throw new Error(message || `HTTP ${response.status}`);
   return data;
 }
 
