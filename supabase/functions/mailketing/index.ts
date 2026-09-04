@@ -26,6 +26,39 @@ const normalizeToken = (value: unknown) => {
   return token.trim();
 };
 
+const signTracking = async (value: string, secret: string) => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)),
+  );
+  return Array.from(signature)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const addTracking = async (
+  html: string,
+  campaignId: string,
+  recipientId: string,
+  supabaseUrl: string,
+  secret: string,
+) => {
+  const signature = await signTracking(`${campaignId}:${recipientId}`, secret);
+  const base = `${supabaseUrl}/functions/v1/email-track?c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recipientId)}&t=${signature}`;
+  const links = html.replace(
+    /href=(["'])(https?:\/\/[^"'\s]+)\1/gi,
+    (_, quote, target) =>
+      `href=${quote}${base}&a=click&u=${encodeURIComponent(target)}${quote}`,
+  );
+  return `${links}<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div><img src="${base}&a=open" width="1" height="1" alt="" style="display:block;width:1px;height:1px;opacity:0" />`;
+};
+
 const requestMailketing = async (token: string, path: string, body?: unknown, corporate = false) => {
   const response = await fetch(`${MAILKETING_URL}${corporate ? "/corporate" : ""}${path}`, {
     method: body ? "POST" : "GET",
@@ -54,16 +87,11 @@ export default {
     const userId = authData.user.id;
       const { data: profile } = await admin
         .from("profiles").select("role,active").eq("id", userId).single();
-      // An inactive account is an expected application state, not a crashed
-      // function. Return a normal response so clients can render the account
-      // status instead of treating the request as an unhandled runtime error.
-      if (!profile?.active) {
-        return json({ success: false, code: "ACCOUNT_INACTIVE", message: "Akun tidak aktif." });
-      }
+      if (!profile?.active) return json({ success: false, message: "Akun tidak aktif." }, 403);
 
       const input = await request.json().catch(() => ({}));
       const action = String(input.action ?? "");
-      const adminOnly = ["save-settings", "retry", "process-queue"];
+      const adminOnly = ["save-settings", "retry", "process-queue", "pause-campaign", "resume-campaign", "cancel-campaign", "list-users", "create-user", "update-user"];
       if (adminOnly.includes(action) && profile.role !== "admin") {
         return json({ success: false, message: "Akses khusus admin." }, 403);
       }
@@ -93,6 +121,48 @@ export default {
         return json({ success: true, message: "Pengaturan API tersimpan dengan aman." });
       }
 
+      if (action === "list-users") {
+        const { data, error } = await admin.from("profiles").select("*").order("created_at");
+        if (error) return json({ success: false, message: error.message }, 400);
+        return json({ success: true, users: data ?? [] });
+      }
+      if (action === "create-user") {
+        const email = String(input.email ?? "").trim().toLowerCase();
+        const password = String(input.password ?? "");
+        if (!email || password.length < 8)
+          return json({ success: false, message: "Email dan password minimal 8 karakter wajib diisi." }, 422);
+        const { data, error } = await admin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: String(input.full_name ?? "") },
+        });
+        if (error || !data.user) return json({ success: false, message: error?.message ?? "Akun gagal dibuat." }, 400);
+        await admin.from("profiles").upsert({
+          id: data.user.id,
+          email,
+          full_name: String(input.full_name ?? "") || null,
+          role: input.role === "admin" ? "admin" : "operator",
+          active: input.active !== false,
+          updated_at: new Date().toISOString(),
+        });
+        await admin.from("audit_logs").insert({ user_id: userId, action: "user.created", entity_type: "profile", entity_id: data.user.id, metadata: { email, role: input.role } });
+        return json({ success: true, message: "Akun pengguna berhasil dibuat." });
+      }
+      if (action === "update-user") {
+        if (!input.user_id || input.user_id === userId)
+          return json({ success: false, message: "Akun sendiri tidak dapat dinonaktifkan dari menu ini." }, 422);
+        const updates = {
+          role: input.role === "admin" ? "admin" : "operator",
+          active: Boolean(input.active),
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await admin.from("profiles").update(updates).eq("id", input.user_id);
+        if (error) return json({ success: false, message: error.message }, 400);
+        await admin.from("audit_logs").insert({ user_id: userId, action: "user.updated", entity_type: "profile", entity_id: input.user_id, metadata: updates });
+        return json({ success: true, message: "Hak akses pengguna diperbarui." });
+      }
+
       const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
@@ -116,13 +186,37 @@ export default {
       }
       if (action === "create-campaign") {
         const campaign = input.campaign ?? {};
-        const recipients = Array.isArray(input.recipients) ? input.recipients.slice(0, 10000) : [];
-        if (!campaign.name || !campaign.from_email || !campaign.subject || !campaign.html_content || !recipients.length) {
+        const idempotencyKey = String(input.idempotency_key ?? "").trim();
+        const requested = Array.isArray(input.recipients) ? input.recipients.slice(0, 10000) : [];
+        if (!campaign.name || !campaign.from_email || !campaign.subject || !campaign.html_content || !requested.length) {
           return json({ success: false, message: "Data kampanye belum lengkap." }, 422);
+        }
+        if (idempotencyKey) {
+          const { data: duplicate } = await admin.from("campaigns").select("id,status").eq("idempotency_key", idempotencyKey).maybeSingle();
+          if (duplicate) return json({ success: false, code: "DUPLICATE_CAMPAIGN", campaign_id: duplicate.id, message: "Kampanye ini sudah pernah dibuat. Pengiriman ganda dicegah." }, 409);
+        }
+        const [{ data: suppressed }, { data: inactive }] = await Promise.all([
+          admin.from("suppressions").select("email").limit(10000),
+          admin.from("contacts").select("email").neq("status", "active").limit(10000),
+        ]);
+        const blocked = new Set([
+          ...(suppressed ?? []).map((row: any) => String(row.email).toLowerCase()),
+          ...(inactive ?? []).map((row: any) => String(row.email).toLowerCase()),
+        ]);
+        const recipients = requested.filter((item: any) => !blocked.has(String(item.email).trim().toLowerCase()));
+        if (!recipients.length) return json({ success: false, message: "Semua penerima berada di daftar unsubscribe/blacklist." }, 422);
+        const creditCheck = await provider("/credits");
+        const credits = Number(creditCheck?.data?.credits ?? 0);
+        if (creditCheck.success && recipients.length > credits) {
+          return json({ success: false, code: "INSUFFICIENT_CREDITS", message: `Kredit tidak cukup. Dibutuhkan ${recipients.length}, tersedia ${credits}.` }, 422);
         }
         const status = campaign.scheduled_at ? "scheduled" : "processing";
         const { data: created, error } = await admin.from("campaigns").insert({
-          ...campaign, status, total_count: recipients.length, created_by: userId,
+          ...campaign,
+          idempotency_key: idempotencyKey || null,
+          status,
+          total_count: recipients.length,
+          created_by: userId,
         }).select("id").single();
         if (error) return json({ success: false, message: error.message }, 400);
         const rows = recipients.map((item: any) => ({
@@ -135,8 +229,38 @@ export default {
           const { error: recipientError } = await admin.from("campaign_recipients").insert(rows.slice(i, i + 500));
           if (recipientError) return json({ success: false, message: recipientError.message }, 400);
         }
-        await admin.from("audit_logs").insert({ user_id: userId, action: "campaign.created", entity_type: "campaign", entity_id: created.id, metadata: { count: rows.length } });
-        return json({ success: true, campaign_id: created.id, status, message: campaign.scheduled_at ? "Kampanye berhasil dijadwalkan." : "Kampanye dibuat dan siap diproses." });
+        await admin.from("audit_logs").insert({
+          user_id: userId,
+          action: "campaign.created",
+          entity_type: "campaign",
+          entity_id: created.id,
+          metadata: { count: rows.length, suppressed: requested.length - rows.length },
+        });
+        return json({
+          success: true,
+          campaign_id: created.id,
+          status,
+          suppressed_count: requested.length - rows.length,
+          message: campaign.scheduled_at
+            ? "Kampanye berhasil dijadwalkan."
+            : "Kampanye dibuat dan siap diproses.",
+        });
+      }
+      if (action === "pause-campaign") {
+        await admin.from("campaigns").update({ status: "paused", paused_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.campaign_id).in("status", ["processing", "scheduled"]);
+        await admin.from("audit_logs").insert({ user_id: userId, action: "campaign.paused", entity_type: "campaign", entity_id: input.campaign_id });
+        return json({ success: true, message: "Kampanye dijeda." });
+      }
+      if (action === "resume-campaign") {
+        await admin.from("campaigns").update({ status: "processing", paused_at: null, updated_at: new Date().toISOString() }).eq("id", input.campaign_id).eq("status", "paused");
+        await admin.from("audit_logs").insert({ user_id: userId, action: "campaign.resumed", entity_type: "campaign", entity_id: input.campaign_id });
+        return json({ success: true, message: "Kampanye dilanjutkan." });
+      }
+      if (action === "cancel-campaign") {
+        await admin.from("campaigns").update({ status: "cancelled", cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.campaign_id).in("status", ["draft", "scheduled", "processing", "paused"]);
+        await admin.from("campaign_recipients").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("campaign_id", input.campaign_id).in("status", ["pending", "processing"]);
+        await admin.from("audit_logs").insert({ user_id: userId, action: "campaign.cancelled", entity_type: "campaign", entity_id: input.campaign_id });
+        return json({ success: true, message: "Kampanye dibatalkan." });
       }
       if (action === "retry") {
         await admin.from("campaign_recipients").update({ status: "pending", last_error: null, updated_at: new Date().toISOString() }).eq("campaign_id", input.campaign_id).eq("status", "failed");
@@ -153,12 +277,20 @@ export default {
           for (const recipient of recipients ?? []) {
             await admin.from("campaign_recipients").update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now }).eq("id", recipient.id).eq("status", "pending");
             const variables = { email: recipient.email, ...(recipient.variables ?? {}) };
+            const personalizedContent = interpolate(campaign.html_content, variables);
+            const trackedContent = await addTracking(
+              personalizedContent,
+              campaign.id,
+              recipient.id,
+              url,
+              secret,
+            );
             const response = await provider("/send", {
               from_name: campaign.from_name,
               from_email: campaign.from_email,
               subject: interpolate(campaign.subject, variables),
               recipient: recipient.email,
-              content: interpolate(campaign.html_content, variables),
+              content: trackedContent,
               ...(campaign.attachments?.[0] ? { attach1: campaign.attachments[0] } : {}),
               ...(campaign.attachments?.[1] ? { attach2: campaign.attachments[1] } : {}),
               ...(campaign.attachments?.[2] ? { attach3: campaign.attachments[2] } : {}),
