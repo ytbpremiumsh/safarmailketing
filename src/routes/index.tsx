@@ -334,7 +334,8 @@ function Dashboard({
           token,
         ),
       ]);
-      setProfile(p[0]);
+      setProfile(p[0] ?? null);
+      setProfileLoaded(true);
       setContacts(c);
       setTemplates(t);
       setCampaigns(h);
