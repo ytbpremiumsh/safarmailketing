@@ -2182,16 +2182,34 @@ function Compose({
     [categoryFilter, setCategoryFilter] = useState("all"),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState(false);
-  const idempotencyKey = useMemo(
-    () =>
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random()}`,
-    [],
+  const createIdempotencyKey = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`;
+  const [idempotencyKey, setIdempotencyKey] = useState(
+    createIdempotencyKey,
   );
-  const senders = (provider?.senders?.data?.senders ?? [])
-    .map((s: any) => s.sender_email ?? s.email)
-    .filter(Boolean);
+  const senderPayload =
+    provider?.senders?.data?.senders ??
+    provider?.senders?.data ??
+    provider?.senders ??
+    [];
+  const senderRows = Array.isArray(senderPayload)
+    ? senderPayload
+    : senderPayload && typeof senderPayload === "object"
+      ? [senderPayload]
+      : [];
+  const senders = Array.from(
+    new Set(
+      senderRows
+        .map((sender: any) =>
+          typeof sender === "string"
+            ? sender
+            : sender?.sender_email ?? sender?.email,
+        )
+        .filter(Boolean),
+    ),
+  ) as string[];
   const categories = Array.from(
     new Set(
       contacts.map((contact: Contact) => contact.category || "Umum"),
@@ -2304,8 +2322,11 @@ function Compose({
           },
           recipients,
         });
-        if (d.success && !f.scheduled_at)
-          await invoke({ action: "process-queue" });
+        if (d.success) {
+          setIdempotencyKey(createIdempotencyKey());
+          if (!f.scheduled_at)
+            await invoke({ action: "process-queue" });
+        }
         await reload();
       }
       setNotice({ success: d.success, message: d.message });
