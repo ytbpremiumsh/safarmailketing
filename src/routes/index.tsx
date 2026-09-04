@@ -13,6 +13,7 @@ import {
   LogOut,
   Mail,
   RefreshCw,
+  Search,
   Send,
   Settings,
   Trash2,
@@ -626,10 +627,44 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   const [bulkText, setBulkText] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [deleteCategory, setDeleteCategory] = useState("");
+  const [contactQuery, setContactQuery] = useState("");
+  const [contactCategoryFilter, setContactCategoryFilter] = useState("all");
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [contactPage, setContactPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const contactCategories = Array.from(
     new Set(contacts.map((contact: Contact) => contact.category || "Umum")),
   ).sort() as string[];
+  const normalizedQuery = contactQuery.trim().toLowerCase();
+  const filteredContacts = contacts.filter((contact: Contact) => {
+    const matchesCategory =
+      contactCategoryFilter === "all" ||
+      (contact.category || "Umum") === contactCategoryFilter;
+    const searchable = [
+      contact.registration_code,
+      contact.full_name,
+      contact.first_name,
+      contact.last_name,
+      contact.email,
+      contact.mobile,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return matchesCategory && (!normalizedQuery || searchable.includes(normalizedQuery));
+  });
+  const totalContactPages = Math.max(
+    1,
+    Math.ceil(filteredContacts.length / rowsPerPage),
+  );
+  const safeContactPage = Math.min(contactPage, totalContactPages);
+  const visibleContactRows = filteredContacts.slice(
+    (safeContactPage - 1) * rowsPerPage,
+    safeContactPage * rowsPerPage,
+  );
+  useEffect(() => {
+    setContactPage(1);
+  }, [contactQuery, contactCategoryFilter, rowsPerPage]);
 
   const save = async () => {
     setBusy(true);
@@ -1122,39 +1157,158 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="min-w-[860px] w-full text-sm">
-            <thead>
-              <tr className="border-b bg-slate-50 text-left">
-                <Th>
-                  <input
-                    type="checkbox"
-                    aria-label="Pilih semua kontak"
-                    checked={contacts.length > 0 && selectedContactIds.length === contacts.length}
-                    onChange={(e) =>
-                      setSelectedContactIds(
-                        e.target.checked ? contacts.map((contact: Contact) => contact.id) : [],
-                      )
-                    }
-                  />
-                </Th>
-                <Th>Kode</Th>
-                <Th>Daftar Nama</Th>
-                <Th>Email</Th>
-                <Th>WhatsApp</Th>
-                <Th>Kategori</Th>
-                <Th>Aksi</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {contacts.map((c: Contact) => (
-                <tr
-                  key={c.id}
-                  className={`border-b transition-colors ${selectedContactIds.includes(c.id) ? "bg-emerald-50/70" : "hover:bg-slate-50"}`}
-                >
-                  <Td>
+        <CardHeader className="gap-4">
+          <div>
+            <CardTitle>Daftar Kontak</CardTitle>
+            <p className="mt-1 text-sm text-slate-500">
+              Menampilkan {filteredContacts.length} dari {contacts.length} kontak.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_220px_150px]">
+            <label className="relative">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3.5 top-3 text-slate-400"
+              />
+              <Input
+                className="pl-10"
+                value={contactQuery}
+                onChange={(e) => setContactQuery(e.target.value)}
+                placeholder="Cari kode, nama, email, atau WhatsApp"
+              />
+            </label>
+            <select
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm shadow-sm"
+              value={contactCategoryFilter}
+              onChange={(e) => setContactCategoryFilter(e.target.value)}
+            >
+              <option value="all">Semua kategori</option>
+              {contactCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm shadow-sm"
+              value={rowsPerPage}
+              onChange={(e) => setRowsPerPage(Number(e.target.value))}
+            >
+              {[10, 25, 50, 100].map((amount) => (
+                <option key={amount} value={amount}>
+                  {amount} baris
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="min-w-[860px] w-full text-sm">
+              <thead>
+                <tr className="border-y bg-slate-50/80 text-left">
+                  <Th>
                     <input
                       type="checkbox"
+                      aria-label="Pilih kontak pada halaman ini"
+                      checked={
+                        visibleContactRows.length > 0 &&
+                        visibleContactRows.every((contact: Contact) =>
+                          selectedContactIds.includes(contact.id),
+                        )
+                      }
+                      onChange={(e) => {
+                        const pageIds = visibleContactRows.map(
+                          (contact: Contact) => contact.id,
+                        );
+                        setSelectedContactIds(
+                          e.target.checked
+                            ? Array.from(new Set([...selectedContactIds, ...pageIds]))
+                            : selectedContactIds.filter(
+                                (id) => !pageIds.includes(id),
+                              ),
+                        );
+                      }}
+                    />
+                  </Th>
+                  <Th>Kode</Th>
+                  <Th>Daftar Nama</Th>
+                  <Th>Email</Th>
+                  <Th>WhatsApp</Th>
+                  <Th>Kategori</Th>
+                  <Th>Aksi</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleContactRows.length ? (
+                  visibleContactRows.map((c: Contact) => (
+                    <tr
+                      key={c.id}
+                      className={`border-b transition-colors ${selectedContactIds.includes(c.id) ? "bg-emerald-50/70" : "hover:bg-slate-50"}`}
+                    >
+                      <Td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Pilih ${c.email}`}
+                          checked={selectedContactIds.includes(c.id)}
+                          onChange={(e) =>
+                            setSelectedContactIds(
+                              e.target.checked
+                                ? [...selectedContactIds, c.id]
+                                : selectedContactIds.filter((id) => id !== c.id),
+                            )
+                          }
+                        />
+                      </Td>
+                      <Td>{c.registration_code || "—"}</Td>
+                      <Td>
+                        {c.full_name ||
+                          [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+                          "—"}
+                      </Td>
+                      <Td>{c.email}</Td>
+                      <Td>{c.mobile || "—"}</Td>
+                      <Td>
+                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                          {c.category || "Umum"}
+                        </span>
+                      </Td>
+                      <Td>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => deleteContacts([c.id])}
+                        >
+                          <Trash2 /> Hapus
+                        </Button>
+                      </Td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                      Kontak tidak ditemukan.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="divide-y md:hidden">
+            {visibleContactRows.length ? (
+              visibleContactRows.map((c: Contact) => (
+                <article
+                  key={c.id}
+                  className={`space-y-3 p-4 transition-colors ${selectedContactIds.includes(c.id) ? "bg-emerald-50/70" : ""}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4"
                       aria-label={`Pilih ${c.email}`}
                       checked={selectedContactIds.includes(c.id)}
                       onChange={(e) =>
@@ -1165,29 +1319,79 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                         )
                       }
                     />
-                  </Td>
-                  <Td>{c.registration_code || "—"}</Td>
-                  <Td>
-                    {c.full_name ||
-                      [c.first_name, c.last_name].filter(Boolean).join(" ") ||
-                      "—"}
-                  </Td>
-                  <Td>{c.email}</Td>
-                  <Td>{c.mobile || "—"}</Td>
-                  <Td>
-                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                      {c.category || "Umum"}
-                    </span>
-                  </Td>
-                  <Td>
-                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
-                      <Trash2 /> Hapus
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-slate-900">
+                          {c.full_name || c.first_name || "Tanpa nama"}
+                        </h3>
+                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                          {c.category || "Umum"}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-all text-sm text-slate-600">{c.email}</p>
+                    </div>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3 text-xs">
+                    <div>
+                      <dt className="text-slate-400">Kode</dt>
+                      <dd className="mt-1 font-medium text-slate-700">
+                        {c.registration_code || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">WhatsApp</dt>
+                      <dd className="mt-1 font-medium text-slate-700">
+                        {c.mobile || "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={busy}
+                    onClick={() => deleteContacts([c.id])}
+                  >
+                    <Trash2 /> Hapus Kontak
+                  </Button>
+                </article>
+              ))
+            ) : (
+              <p className="px-4 py-10 text-center text-sm text-slate-500">
+                Kontak tidak ditemukan.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-center text-xs text-slate-500 sm:text-left">
+              Halaman {safeContactPage} dari {totalContactPages} ·{" "}
+              {filteredContacts.length} kontak
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safeContactPage <= 1}
+                onClick={() => setContactPage((page) => Math.max(1, page - 1))}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safeContactPage >= totalContactPages}
+                onClick={() =>
+                  setContactPage((page) => Math.min(totalContactPages, page + 1))
+                }
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </>
