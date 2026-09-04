@@ -82,7 +82,7 @@ export const Route = createFileRoute("/")({
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function tokenIssuedAt(token: string) {
   try {
-    const value = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const value = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
     return Number(JSON.parse(atob(value)).iat) * 1000;
   } catch {
     return 0;
@@ -591,7 +591,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     try {
       const text = await file.text(),
         lines = text.split(/\r?\n/).filter(Boolean),
-        cols = lines[0].split(",").map((x) => x.trim().toLowerCase()),
+        cols = (lines[0] ?? "").split(",").map((x) => x.trim().toLowerCase()),
         rows = lines
           .slice(1)
           .map((line) => {
