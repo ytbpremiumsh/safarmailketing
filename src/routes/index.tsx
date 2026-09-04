@@ -2540,14 +2540,10 @@ function Compose({
 function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const [detail, setDetail] = useState<{ campaign: Campaign; rows: any[] } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [detailFilter, setDetailFilter] = useState("all");
+  const [detailQuery, setDetailQuery] = useState("");
 
   const runAction = async (action: string, campaign: Campaign) => {
-    const labels: Record<string, string> = {
-      retry: "ulangi email gagal",
-      "pause-campaign": "jeda kampanye",
-      "resume-campaign": "lanjutkan kampanye",
-      "cancel-campaign": "batalkan kampanye",
-    };
     if (
       action === "cancel-campaign" &&
       !window.confirm(`Yakin ingin membatalkan kampanye “${campaign.name}”?`)
@@ -2558,58 +2554,206 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
       if (response.success && ["retry", "resume-campaign"].includes(action))
         await invoke({ action: "process-queue" });
       await reload();
-      setNotice({
-        success: response.success,
-        message: response.message || `Berhasil ${labels[action]}.`,
-      });
+      setNotice({ success: response.success, message: response.message });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Aksi kampanye gagal." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Aksi kampanye gagal.",
+      });
     } finally {
       setBusyId(null);
     }
   };
 
   const showDetail = async (campaign: Campaign) => {
+    setBusyId(campaign.id);
     try {
       const rows = await api(
         `/rest/v1/campaign_recipients?campaign_id=eq.${campaign.id}&select=*&order=updated_at.desc&limit=5000`,
         token,
       );
       setDetail({ campaign, rows });
+      setDetailFilter("all");
+      setDetailQuery("");
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Detail gagal dimuat." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Detail gagal dimuat.",
+      });
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const exportReport = () => {
-    const rows = [
-      ["Kampanye", "Status", "Total", "Terkirim", "Gagal", "Dibuka", "Klik", "Jadwal"],
-      ...campaigns.map((campaign: Campaign) => [
-        campaign.name,
-        campaign.status,
-        campaign.total_count,
-        campaign.sent_count,
-        campaign.failed_count,
-        campaign.opened_count ?? 0,
-        campaign.clicked_count ?? 0,
-        campaign.scheduled_at ?? "Langsung",
-      ]),
-    ];
-    const csv = "\uFEFF" + rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const exportCsv = (rows: unknown[][], filename: string) => {
+    const csv =
+      "\uFEFF" +
+      rows
+        .map((row) =>
+          row
+            .map(
+              (value) =>
+                `"${String(value ?? "").replace(/"/g, '""')}"`,
+            )
+            .join(","),
+        )
+        .join("\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "laporan-kampanye-safar-mail.csv";
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
   };
 
+  const exportReport = () =>
+    exportCsv(
+      [
+        [
+          "Kampanye",
+          "Status",
+          "Total",
+          "Terkirim",
+          "Gagal",
+          "Dibuka",
+          "Klik",
+          "Jadwal",
+        ],
+        ...campaigns.map((campaign: Campaign) => [
+          campaign.name,
+          campaign.status,
+          campaign.total_count,
+          campaign.sent_count,
+          campaign.failed_count,
+          campaign.opened_count ?? 0,
+          campaign.clicked_count ?? 0,
+          campaign.scheduled_at ?? "Langsung",
+        ]),
+      ],
+      "laporan-kampanye-safar-mail.csv",
+    );
+
+  const detailStats = detail
+    ? {
+        total: detail.rows.length,
+        delivered: detail.rows.filter((row) =>
+          ["queued", "sent"].includes(row.status),
+        ).length,
+        opened: detail.rows.filter((row) => Boolean(row.opened_at)).length,
+        clicked: detail.rows.filter((row) => Boolean(row.first_clicked_at))
+          .length,
+        failed: detail.rows.filter((row) => row.status === "failed").length,
+        pending: detail.rows.filter((row) =>
+          ["pending", "processing"].includes(row.status),
+        ).length,
+      }
+    : null;
+
+  const filteredDetailRows = detail
+    ? detail.rows.filter((row) => {
+        const queryMatches =
+          !detailQuery.trim() ||
+          String(row.email)
+            .toLowerCase()
+            .includes(detailQuery.trim().toLowerCase());
+        const delivered = ["queued", "sent"].includes(row.status);
+        const filterMatches =
+          detailFilter === "all" ||
+          (detailFilter === "delivered" && delivered) ||
+          (detailFilter === "opened" && Boolean(row.opened_at)) ||
+          (detailFilter === "unopened" && delivered && !row.opened_at) ||
+          (detailFilter === "clicked" && Boolean(row.first_clicked_at)) ||
+          (detailFilter === "unclicked" &&
+            delivered &&
+            !row.first_clicked_at) ||
+          (detailFilter === "failed" && row.status === "failed") ||
+          (detailFilter === "pending" &&
+            ["pending", "processing"].includes(row.status)) ||
+          (detailFilter === "cancelled" && row.status === "cancelled");
+        return queryMatches && filterMatches;
+      })
+    : [];
+
+  const exportDetail = () => {
+    if (!detail) return;
+    exportCsv(
+      [
+        [
+          "Email",
+          "Status",
+          "Percobaan",
+          "Jumlah Buka",
+          "Pertama Dibuka",
+          "Jumlah Klik",
+          "Pertama Klik",
+          "Pesan Provider",
+          "Error",
+        ],
+        ...filteredDetailRows.map((row) => [
+          row.email,
+          row.status,
+          row.attempts,
+          row.open_count ?? 0,
+          row.opened_at
+            ? new Date(row.opened_at).toLocaleString("id-ID")
+            : "",
+          row.click_count ?? 0,
+          row.first_clicked_at
+            ? new Date(row.first_clicked_at).toLocaleString("id-ID")
+            : "",
+          row.provider_message ?? "",
+          row.last_error ?? "",
+        ]),
+      ],
+      `detail-${detail.campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`,
+    );
+  };
+
+  const filterOptions = detailStats
+    ? [
+        ["all", "Semua", detailStats.total],
+        ["delivered", "Terkirim", detailStats.delivered],
+        ["opened", "Sudah dibuka", detailStats.opened],
+        [
+          "unopened",
+          "Belum dibuka",
+          detail.rows.filter(
+            (row) =>
+              ["queued", "sent"].includes(row.status) && !row.opened_at,
+          ).length,
+        ],
+        ["clicked", "Sudah klik", detailStats.clicked],
+        [
+          "unclicked",
+          "Belum klik",
+          detail.rows.filter(
+            (row) =>
+              ["queued", "sent"].includes(row.status) &&
+              !row.first_clicked_at,
+          ).length,
+        ],
+        ["failed", "Gagal", detailStats.failed],
+        ["pending", "Antre", detailStats.pending],
+        [
+          "cancelled",
+          "Dibatalkan",
+          detail.rows.filter((row) => row.status === "cancelled").length,
+        ],
+      ]
+    : [];
+
   return (
     <>
-      <PageHeading title="Riwayat Pengiriman" description="Pantau delivery, open, click, dan kendalikan kampanye." icon={<History />} />
+      <PageHeading
+        title="Riwayat Pengiriman"
+        description="Pantau penerima, delivery, open, click, dan kendalikan kampanye."
+        icon={<History />}
+      />
       <div className="flex justify-end">
         <Button type="button" variant="outline" onClick={exportReport}>
-          <FileSpreadsheet /> Export Laporan
+          <FileSpreadsheet /> Export Semua Kampanye
         </Button>
       </div>
       <Card>
@@ -2622,33 +2766,199 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           />
         </CardContent>
       </Card>
-      {detail && (
+
+      {detail && detailStats && (
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle>Detail: {detail.campaign.name}</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">{detail.rows.length} penerima</p>
+          <CardHeader className="gap-4 border-b border-slate-100">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Detail: {detail.campaign.name}</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  Klik filter untuk melihat kelompok penerima tertentu.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={exportDetail}>
+                  <FileSpreadsheet /> Export Detail
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDetail(null)}
+                >
+                  Tutup
+                </Button>
+              </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setDetail(null)}>Tutup</Button>
-          </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="min-w-[900px] w-full text-sm">
-              <thead><tr className="border-y bg-slate-50 text-left">
-                <Th>Email</Th><Th>Status</Th><Th>Percobaan</Th><Th>Dibuka</Th><Th>Klik</Th><Th>Error</Th>
-              </tr></thead>
-              <tbody>
-                {detail.rows.map((row: any) => (
-                  <tr key={row.id} className="border-b">
-                    <Td>{row.email}</Td>
-                    <Td>{row.status}</Td>
-                    <Td>{row.attempts}</Td>
-                    <Td>{row.open_count ?? 0}</Td>
-                    <Td>{row.click_count ?? 0}</Td>
-                    <Td>{row.last_error || "—"}</Td>
-                  </tr>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+              {[
+                ["Total", detailStats.total, "bg-slate-50 text-slate-700"],
+                [
+                  "Terkirim",
+                  detailStats.delivered,
+                  "bg-emerald-50 text-emerald-700",
+                ],
+                ["Dibuka", detailStats.opened, "bg-sky-50 text-sky-700"],
+                ["Klik", detailStats.clicked, "bg-violet-50 text-violet-700"],
+                ["Gagal", detailStats.failed, "bg-red-50 text-red-700"],
+                ["Antre", detailStats.pending, "bg-amber-50 text-amber-700"],
+              ].map(([label, value, color]) => (
+                <div
+                  key={String(label)}
+                  className={`rounded-2xl p-3 ${color}`}
+                >
+                  <p className="text-xs">{label}</p>
+                  <b className="mt-1 block text-xl">{value}</b>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_2fr]">
+              <label className="relative">
+                <Search
+                  size={17}
+                  className="pointer-events-none absolute left-3.5 top-3 text-slate-400"
+                />
+                <Input
+                  className="pl-10"
+                  value={detailQuery}
+                  onChange={(event) => setDetailQuery(event.target.value)}
+                  placeholder="Cari email penerima"
+                />
+              </label>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {filterOptions.map(([value, label, count]) => (
+                  <button
+                    key={String(value)}
+                    type="button"
+                    onClick={() => setDetailFilter(String(value))}
+                    className={`whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-semibold transition ${detailFilter === value ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50"}`}
+                  >
+                    {label} ({count})
+                  </button>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">
+              Menampilkan {filteredDetailRows.length} penerima.
+            </p>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-[1100px] w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-50 text-left">
+                    <Th>Email</Th>
+                    <Th>Status</Th>
+                    <Th>Percobaan</Th>
+                    <Th>Dibuka</Th>
+                    <Th>Pertama dibuka</Th>
+                    <Th>Klik</Th>
+                    <Th>Pertama klik</Th>
+                    <Th>Keterangan</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDetailRows.length ? (
+                    filteredDetailRows.map((row: any) => (
+                      <tr key={row.id} className="border-b hover:bg-slate-50">
+                        <Td>{row.email}</Td>
+                        <Td>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
+                            {row.status}
+                          </span>
+                        </Td>
+                        <Td>{row.attempts}</Td>
+                        <Td>{row.open_count ?? 0}</Td>
+                        <Td>
+                          {row.opened_at
+                            ? new Date(row.opened_at).toLocaleString("id-ID")
+                            : "Belum dibuka"}
+                        </Td>
+                        <Td>{row.click_count ?? 0}</Td>
+                        <Td>
+                          {row.first_clicked_at
+                            ? new Date(
+                                row.first_clicked_at,
+                              ).toLocaleString("id-ID")
+                            : "Belum klik"}
+                        </Td>
+                        <Td>{row.last_error || row.provider_message || "—"}</Td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-4 py-10 text-center text-slate-500"
+                      >
+                        Penerima tidak ditemukan pada filter ini.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="divide-y md:hidden">
+              {filteredDetailRows.length ? (
+                filteredDetailRows.map((row: any) => (
+                  <article key={row.id} className="space-y-3 p-4">
+                    <div>
+                      <p className="break-all font-semibold text-slate-900">
+                        {row.email}
+                      </p>
+                      <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
+                        {row.status}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div
+                        className={`rounded-xl p-3 ${row.opened_at ? "bg-sky-50 text-sky-700" : "bg-slate-50 text-slate-500"}`}
+                      >
+                        <p>Email dibuka</p>
+                        <b className="mt-1 block">
+                          {row.open_count ?? 0} kali
+                        </b>
+                      </div>
+                      <div
+                        className={`rounded-xl p-3 ${row.first_clicked_at ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"}`}
+                      >
+                        <p>Tautan diklik</p>
+                        <b className="mt-1 block">
+                          {row.click_count ?? 0} kali
+                        </b>
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-xs text-slate-500">
+                      <p>
+                        Dibuka:{" "}
+                        {row.opened_at
+                          ? new Date(row.opened_at).toLocaleString("id-ID")
+                          : "Belum pernah"}
+                      </p>
+                      <p>
+                        Klik:{" "}
+                        {row.first_clicked_at
+                          ? new Date(
+                              row.first_clicked_at,
+                            ).toLocaleString("id-ID")
+                          : "Belum pernah"}
+                      </p>
+                      {(row.last_error || row.provider_message) && (
+                        <p className="rounded-xl bg-slate-50 p-2">
+                          {row.last_error || row.provider_message}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <p className="px-4 py-10 text-center text-sm text-slate-500">
+                  Penerima tidak ditemukan pada filter ini.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
