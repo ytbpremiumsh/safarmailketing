@@ -2229,13 +2229,15 @@ function Compose({
     createIdempotencyKey,
   );
   const senderPayload =
-    provider?.senders?.data?.senders ??
-    provider?.senders?.data ??
-    provider?.senders ??
-    [];
+    provider?.verified_senders?.length
+      ? provider.verified_senders
+      : provider?.senders?.data?.senders ??
+        provider?.senders?.data ??
+        provider?.senders ??
+        [];
   const senderRows = Array.isArray(senderPayload)
     ? senderPayload
-    : senderPayload && typeof senderPayload === "object"
+    : senderPayload
       ? [senderPayload]
       : [];
   const senders = Array.from(
@@ -2244,9 +2246,13 @@ function Compose({
         .map((sender: any) =>
           typeof sender === "string"
             ? sender
-            : sender?.sender_email ?? sender?.email,
+            : sender?.sender_email ??
+              sender?.from_email ??
+              sender?.email ??
+              sender?.address,
         )
-        .filter(Boolean),
+        .filter(Boolean)
+        .map((email: string) => String(email).trim().toLowerCase()),
     ),
   ) as string[];
   const categories = Array.from(
