@@ -385,6 +385,33 @@ function Dashboard({
     { id: "history" as View, label: "Riwayat", icon: History },
     { id: "settings" as View, label: "Pengaturan", icon: Settings },
   ];
+  if (profileLoaded && !profile?.active)
+    return (
+      <Center>
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Akun belum aktif</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-600">
+            <p>
+              Akun <b>{session.user.email}</b>{" "}
+              {profile
+                ? "berstatus nonaktif."
+                : "belum memiliki profil di sistem."}{" "}
+              Minta admin mengaktifkan akun Anda, lalu masuk kembali.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => load()}>
+                Coba lagi
+              </Button>
+              <Button onClick={onLogout}>
+                <LogOut /> Keluar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </Center>
+    );
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-20 border-b bg-white">
