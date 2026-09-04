@@ -52,6 +52,9 @@ type Contact = {
   last_name?: string;
   mobile?: string;
   category?: string;
+  status?: string;
+  unsubscribed_at?: string;
+  bounce_count?: number;
   custom_fields?: Record<string, string>;
 };
 type Template = {
@@ -59,6 +62,7 @@ type Template = {
   name: string;
   subject: string;
   html_content: string;
+  category?: string;
 };
 type Campaign = {
   id: string;
@@ -68,6 +72,8 @@ type Campaign = {
   total_count: number;
   sent_count: number;
   failed_count: number;
+  opened_count?: number;
+  clicked_count?: number;
   scheduled_at?: string;
   created_at: string;
 };
@@ -234,6 +240,28 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
       setLoading(false);
     }
   };
+
+  const recoverPassword = async () => {
+    if (!email) {
+      setNotice({ success: false, message: "Masukkan email terlebih dahulu." });
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`${SB_URL}/auth/v1/recover`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Permintaan gagal.");
+      setNotice({ success: true, message: "Tautan pengaturan ulang password telah dikirim ke email." });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Permintaan gagal." });
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="grid min-h-screen bg-[radial-gradient(circle_at_top_right,_#d1fae5_0,_#f8fafc_45%,_#ffffff_100%)] lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -296,6 +324,15 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
               {loading ? <Loader2 className="animate-spin" /> : <KeyRound />}
               {mode === "login" ? "Masuk" : "Buat Akun"}
             </Button>
+            {mode === "login" && (
+              <button
+                type="button"
+                className="w-full text-sm text-slate-500 hover:text-emerald-700"
+                onClick={recoverPassword}
+              >
+                Lupa password?
+              </button>
+            )}
             <button
               className="w-full text-sm text-emerald-700"
               onClick={() => setMode(mode === "login" ? "register" : "login")}
@@ -375,6 +412,20 @@ function Dashboard({
       return next;
     });
   };
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(onLogout, 30 * 60 * 1000);
+    };
+    const events = ["pointerdown", "keydown", "scroll"];
+    events.forEach((event) => window.addEventListener(event, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timeout);
+      events.forEach((event) => window.removeEventListener(event, reset));
+    };
+  }, [onLogout]);
   const invoke = async (body: any) =>
     api("/functions/v1/mailketing", token, {
       method: "POST",
@@ -416,6 +467,8 @@ function Dashboard({
     total: totalRecipients,
     sent: sentCount,
     failed: failedCount,
+    opened: campaigns.reduce((n, c) => n + (c.opened_count ?? 0), 0),
+    clicked: campaigns.reduce((n, c) => n + (c.clicked_count ?? 0), 0),
     queued: Math.max(totalRecipients - attemptedCount, 0),
     scheduled: campaigns.filter((c) => c.status === "scheduled").length,
     successRate: attemptedCount
@@ -636,7 +689,7 @@ function Overview({
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
           label="Kredit Mailketing"
           value={provider?.credits?.data?.credits ?? "—"}
@@ -647,6 +700,8 @@ function Overview({
         <Stat label="Berhasil terkirim" value={stats.sent} icon={<CheckCircle2 />} />
         <Stat label="Gagal terkirim" value={stats.failed} icon={<AlertCircle />} />
         <Stat label="Antre / terjadwal" value={stats.queued} icon={<Clock3 />} />
+        <Stat label="Email dibuka" value={stats.opened} icon={<Mail />} />
+        <Stat label="Tautan diklik" value={stats.clicked} icon={<BarChart3 />} />
       </div>
       <Card>
         <CardHeader>
@@ -669,7 +724,7 @@ function Overview({
               style={{ width: `${stats.successRate}%` }}
             />
           </div>
-          <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
             <div className="rounded-2xl bg-emerald-50 p-3">
               <p className="text-emerald-700">Terkirim</p>
               <b className="mt-1 block text-xl text-emerald-900">{stats.sent}</b>
@@ -681,6 +736,18 @@ function Overview({
             <div className="rounded-2xl bg-amber-50 p-3">
               <p className="text-amber-700">Dalam antrean</p>
               <b className="mt-1 block text-xl text-amber-900">{stats.queued}</b>
+            </div>
+            <div className="rounded-2xl bg-sky-50 p-3">
+              <p className="text-sky-700">Dibuka</p>
+              <b className="mt-1 block text-xl text-sky-900">
+                {stats.opened} ({stats.sent ? Math.round((stats.opened / stats.sent) * 100) : 0}%)
+              </b>
+            </div>
+            <div className="rounded-2xl bg-violet-50 p-3">
+              <p className="text-violet-700">Klik</p>
+              <b className="mt-1 block text-xl text-violet-900">
+                {stats.clicked} ({stats.sent ? Math.round((stats.clicked / stats.sent) * 100) : 0}%)
+              </b>
             </div>
           </div>
         </CardContent>
@@ -713,6 +780,8 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   const [bulkText, setBulkText] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [deleteCategory, setDeleteCategory] = useState("");
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [moveCategory, setMoveCategory] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [contactCategoryFilter, setContactCategoryFilter] = useState("all");
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -755,18 +824,29 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   const save = async () => {
     setBusy(true);
     try {
-      await api("/rest/v1/contacts", token, {
-        method: "POST",
-        headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({
-          ...form,
-          first_name: form.full_name,
-          created_by: userId,
-        }),
-      });
+      await api(
+        editingContactId
+          ? `/rest/v1/contacts?id=eq.${editingContactId}`
+          : "/rest/v1/contacts",
+        token,
+        {
+          method: editingContactId ? "PATCH" : "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            ...form,
+            first_name: form.full_name,
+            ...(editingContactId ? {} : { created_by: userId }),
+          }),
+        },
+      );
+      const wasEditing = Boolean(editingContactId);
+      setEditingContactId(null);
       setForm(emptyForm);
       await reload();
-      setNotice({ success: true, message: "Kontak ditambahkan." });
+      setNotice({
+        success: true,
+        message: wasEditing ? "Kontak diperbarui." : "Kontak ditambahkan.",
+      });
     } catch (e) {
       setNotice({
         success: false,
@@ -1092,6 +1172,117 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     }
   };
 
+  const editContact = (contact: Contact) => {
+    setEditingContactId(contact.id);
+    setForm({
+      registration_code: contact.registration_code ?? "",
+      full_name:
+        contact.full_name ??
+        [contact.first_name, contact.last_name].filter(Boolean).join(" "),
+      email: contact.email,
+      mobile: contact.mobile ?? "",
+      category: contact.category ?? "Umum",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const moveSelectedContacts = async () => {
+    if (!selectedContactIds.length || !moveCategory.trim()) return;
+    setBusy(true);
+    try {
+      for (let i = 0; i < selectedContactIds.length; i += 100)
+        await api(
+          `/rest/v1/contacts?id=in.(${selectedContactIds.slice(i, i + 100).join(",")})`,
+          token,
+          {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ category: moveCategory.trim() }),
+          },
+        );
+      const count = selectedContactIds.length;
+      setSelectedContactIds([]);
+      setMoveCategory("");
+      await reload();
+      setNotice({ success: true, message: `${count} kontak berhasil dipindahkan kategori.` });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal memindahkan kontak." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleSuppression = async (contact: Contact) => {
+    setBusy(true);
+    try {
+      const isBlocked = (contact.status ?? "active") !== "active";
+      if (isBlocked) {
+        await api(
+          `/rest/v1/suppressions?email=eq.${encodeURIComponent(contact.email)}`,
+          token,
+          { method: "DELETE", headers: { Prefer: "return=minimal" } },
+        );
+        await api(`/rest/v1/contacts?id=eq.${contact.id}`, token, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "active", unsubscribed_at: null }),
+        });
+      } else {
+        await api("/rest/v1/suppressions?on_conflict=email", token, {
+          method: "POST",
+          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({
+            email: contact.email,
+            contact_id: contact.id,
+            reason: "manual",
+            source: "dashboard",
+            created_by: userId,
+          }),
+        });
+        await api(`/rest/v1/contacts?id=eq.${contact.id}`, token, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "suppressed",
+            unsubscribed_at: new Date().toISOString(),
+          }),
+        });
+      }
+      await reload();
+      setNotice({
+        success: true,
+        message: isBlocked
+          ? "Kontak diaktifkan kembali."
+          : "Kontak dimasukkan ke blacklist.",
+      });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Status kontak gagal diubah." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportContacts = () => {
+    const escape = (value: unknown) =>
+      `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const rows = [
+      ["Kode", "Daftar Nama", "Email", "WhatsApp", "Kategori", "Status"],
+      ...filteredContacts.map((contact: Contact) => [
+        contact.registration_code,
+        contact.full_name ?? contact.first_name,
+        contact.email,
+        contact.mobile,
+        contact.category ?? "Umum",
+        contact.status ?? "active",
+      ]),
+    ];
+    const csv = "\uFEFF" + rows.map((row) => row.map(escape).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `kontak-${contactCategoryFilter === "all" ? "semua" : contactCategoryFilter}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
@@ -1126,8 +1317,21 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             onChange={(e) => setForm({ ...form, category: e.target.value })}
           />
           <Button onClick={save} disabled={busy || !form.email}>
-            Tambah
+            {editingContactId ? <Pencil /> : <Users />}
+            {editingContactId ? "Simpan" : "Tambah"}
           </Button>
+          {editingContactId && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditingContactId(null);
+                setForm(emptyForm);
+              }}
+            >
+              Batal Edit
+            </Button>
+          )}
           <Input
             placeholder="Kategori import dan input massal"
             value={importCategory}
@@ -1239,6 +1443,20 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             <Button type="button" variant="destructive" disabled={busy || !selectedContactIds.length} onClick={() => deleteContacts(selectedContactIds)}>
               <Trash2 /> Hapus Terpilih ({selectedContactIds.length})
             </Button>
+            <Input
+              className="max-w-xs"
+              value={moveCategory}
+              onChange={(e) => setMoveCategory(e.target.value)}
+              placeholder="Kategori tujuan"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !selectedContactIds.length || !moveCategory.trim()}
+              onClick={moveSelectedContacts}
+            >
+              Pindahkan Kategori
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1250,7 +1468,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
               Menampilkan {filteredContacts.length} dari {contacts.length} kontak.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_220px_150px]">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_200px_130px_auto]">
             <label className="relative">
               <Search
                 size={17}
@@ -1286,6 +1504,9 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                 </option>
               ))}
             </select>
+            <Button type="button" variant="outline" onClick={exportContacts}>
+              <FileSpreadsheet /> Export
+            </Button>
           </div>
         </CardHeader>
 
@@ -1361,15 +1582,17 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                         </span>
                       </Td>
                       <Td>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => deleteContacts([c.id])}
-                        >
-                          <Trash2 /> Hapus
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
+                            <Pencil /> Edit
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => toggleSuppression(c)}>
+                            {(c.status ?? "active") === "active" ? "Blacklist" : "Aktifkan"}
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
+                            <Trash2 /> Hapus
+                          </Button>
+                        </div>
                       </Td>
                     </tr>
                   ))
@@ -1431,16 +1654,17 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                       </dd>
                     </div>
                   </dl>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    disabled={busy}
-                    onClick={() => deleteContacts([c.id])}
-                  >
-                    <Trash2 /> Hapus Kontak
-                  </Button>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
+                      <Pencil /> Edit
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => toggleSuppression(c)}>
+                      {(c.status ?? "active") === "active" ? "Blokir" : "Aktif"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
+                      <Trash2 /> Hapus
+                    </Button>
+                  </div>
                 </article>
               ))
             ) : (
@@ -1496,11 +1720,29 @@ function Templates({
     name: "",
     subject: "",
     html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
+    category: "Umum",
   });
   const [preview, setPreview] = useState(true);
   const [savedPreview, setSavedPreview] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("all");
+  const [versions, setVersions] = useState<Record<string, any[]>>({});
+  const templateCategories = Array.from(
+    new Set(templates.map((template: Template) => template.category || "Umum")),
+  ).sort() as string[];
+  const filteredTemplates = templates.filter((template: Template) => {
+    const matchesCategory =
+      templateCategory === "all" ||
+      (template.category || "Umum") === templateCategory;
+    const query = templateSearch.trim().toLowerCase();
+    return (
+      matchesCategory &&
+      (!query ||
+        `${template.name} ${template.subject}`.toLowerCase().includes(query))
+    );
+  });
   const canonicalKeywords = [
     { key: "kode", label: "Kode Pendaftaran" },
     { key: "nama", label: "Nama Lengkap" },
@@ -1560,6 +1802,7 @@ function Templates({
       name: "",
       subject: "",
       html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
+      category: "Umum",
     });
   };
   const editTemplate = (template: Template) => {
@@ -1568,6 +1811,7 @@ function Templates({
       name: template.name,
       subject: template.subject,
       html_content: template.html_content,
+      category: template.category || "Umum",
     });
     setPreview(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1575,6 +1819,27 @@ function Templates({
   const save = async () => {
     setSaving(true);
     try {
+      if (editingId) {
+        const current = templates.find((template: Template) => template.id === editingId);
+        if (current) {
+          const existing = await api(
+            `/rest/v1/template_versions?template_id=eq.${editingId}&select=id`,
+            token,
+          );
+          await api("/rest/v1/template_versions", token, {
+            method: "POST",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              template_id: editingId,
+              name: current.name,
+              subject: current.subject,
+              html_content: current.html_content,
+              version_number: existing.length + 1,
+              created_by: userId,
+            }),
+          });
+        }
+      }
       await api(
         editingId
           ? `/rest/v1/templates?id=eq.${editingId}`
@@ -1606,6 +1871,63 @@ function Templates({
       setSaving(false);
     }
   };
+  const duplicateTemplate = async (template: Template) => {
+    setSaving(true);
+    try {
+      await api("/rest/v1/templates", token, {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          name: `${template.name} (Salinan)`,
+          subject: template.subject,
+          html_content: template.html_content,
+          category: template.category || "Umum",
+          created_by: userId,
+        }),
+      });
+      await reload();
+      setNotice({ success: true, message: "Template berhasil diduplikat." });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal menduplikat template." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteTemplate = async (template: Template) => {
+    if (!window.confirm(`Hapus template “${template.name}”?`)) return;
+    try {
+      await api(`/rest/v1/templates?id=eq.${template.id}`, token, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      await reload();
+      setNotice({ success: true, message: "Template berhasil dihapus." });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal menghapus template." });
+    }
+  };
+
+  const toggleVersions = async (templateId: string) => {
+    if (versions[templateId]) {
+      setVersions((current) => {
+        const next = { ...current };
+        delete next[templateId];
+        return next;
+      });
+      return;
+    }
+    try {
+      const rows = await api(
+        `/rest/v1/template_versions?template_id=eq.${templateId}&select=*&order=version_number.desc`,
+        token,
+      );
+      setVersions((current) => ({ ...current, [templateId]: rows }));
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat." });
+    }
+  };
+
   return (
     <>
       <PageHeading title="Template Email" description="Buat desain HTML dan lihat hasil personalisasi secara langsung." icon={<LayoutTemplate />} />
@@ -1636,6 +1958,15 @@ function Templates({
               onChange={(e) => setF({ ...f, name: e.target.value })}
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Kategori template">
+              <Input
+                value={f.category}
+                onChange={(e) => setF({ ...f, category: e.target.value })}
+                placeholder="Contoh: Reminder"
+              />
+            </Field>
+          </div>
           <Field label="Subjek">
             <Input
               value={f.subject}
@@ -1725,12 +2056,34 @@ function Templates({
           )}
         </CardContent>
       </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+          <Input
+            value={templateSearch}
+            onChange={(e) => setTemplateSearch(e.target.value)}
+            placeholder="Cari nama atau subjek template"
+          />
+          <select
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm"
+            value={templateCategory}
+            onChange={(e) => setTemplateCategory(e.target.value)}
+          >
+            <option value="all">Semua kategori template</option>
+            {templateCategories.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+        </CardContent>
+      </Card>
       <div className="grid gap-4 md:grid-cols-2">
-        {templates.map((t: Template) => (
+        {filteredTemplates.map((t: Template) => (
           <Card key={t.id}>
             <CardHeader>
               <CardTitle className="text-base">{t.name}</CardTitle>
               <p className="truncate text-sm text-slate-500">{t.subject}</p>
+              <span className="w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                {t.category || "Umum"}
+              </span>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -1740,6 +2093,15 @@ function Templates({
                   onClick={() => editTemplate(t)}
                 >
                   <Pencil /> Edit Template
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => duplicateTemplate(t)}>
+                  Duplikat
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => toggleVersions(t.id)}>
+                  {versions[t.id] ? "Tutup Versi" : "Riwayat Versi"}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => deleteTemplate(t)}>
+                  <Trash2 /> Hapus
                 </Button>
                 <Button
                   type="button"
@@ -1752,6 +2114,30 @@ function Templates({
                   {savedPreview === t.id ? "Tutup Preview" : "Lihat Preview"}
                 </Button>
               </div>
+              {versions[t.id] && (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  {versions[t.id].length
+                    ? versions[t.id].map((version: any) => (
+                        <button
+                          type="button"
+                          key={version.id}
+                          className="block w-full rounded-lg px-2 py-2 text-left hover:bg-white"
+                          onClick={() =>
+                            setF({
+                              name: version.name,
+                              subject: version.subject,
+                              html_content: version.html_content,
+                              category: t.category || "Umum",
+                            })
+                          }
+                        >
+                          Versi {version.version_number} ·{" "}
+                          {new Date(version.created_at).toLocaleString("id-ID")}
+                        </button>
+                      ))
+                    : "Belum ada versi sebelumnya."}
+                </div>
+              )}
               {savedPreview === t.id && (
                 <div className="mt-3 overflow-hidden rounded-lg border">
                   <div className="border-b bg-slate-50 px-3 py-2 text-sm font-medium">
@@ -1796,6 +2182,13 @@ function Compose({
     [categoryFilter, setCategoryFilter] = useState("all"),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState(false);
+  const idempotencyKey = useMemo(
+    () =>
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`,
+    [],
+  );
   const senders = (provider?.senders?.data?.senders ?? [])
     .map((s: any) => s.sender_email ?? s.email)
     .filter(Boolean);
@@ -1820,7 +2213,10 @@ function Compose({
   }, [senders.join("|")]);
   const recipients = useMemo(() => {
     const picked = contacts
-      .filter((c: Contact) => selected.includes(c.id))
+      .filter(
+        (c: Contact) =>
+          selected.includes(c.id) && (c.status ?? "active") === "active",
+      )
       .map((c: Contact) => ({
         contact_id: c.id,
         email: c.email,
@@ -1881,8 +2277,20 @@ function Compose({
           },
         });
       } else {
+        const availableCredits = Number(provider?.credits?.data?.credits ?? 0);
+        if (availableCredits && recipients.length > availableCredits)
+          throw new Error(
+            `Kredit tidak cukup: perlu ${recipients.length}, tersedia ${availableCredits}.`,
+          );
+        if (
+          !window.confirm(
+            `Kirim kampanye “${f.name}” dari ${f.from_email} kepada ${recipients.length} penerima${f.scheduled_at ? ` pada ${new Date(f.scheduled_at).toLocaleString("id-ID")}` : " sekarang"}?`,
+          )
+        )
+          return;
         d = await invoke({
           action: "create-campaign",
+          idempotency_key: idempotencyKey,
           campaign: {
             name: f.name,
             from_name: f.from_name,
@@ -2129,39 +2537,182 @@ function Compose({
   );
 }
 
-function HistoryView({ campaigns, invoke, reload, setNotice }: any) {
-  const retry = async (id: string) => {
+function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
+  const [detail, setDetail] = useState<{ campaign: Campaign; rows: any[] } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const runAction = async (action: string, campaign: Campaign) => {
+    const labels: Record<string, string> = {
+      retry: "ulangi email gagal",
+      "pause-campaign": "jeda kampanye",
+      "resume-campaign": "lanjutkan kampanye",
+      "cancel-campaign": "batalkan kampanye",
+    };
+    if (
+      action === "cancel-campaign" &&
+      !window.confirm(`Yakin ingin membatalkan kampanye “${campaign.name}”?`)
+    ) return;
+    setBusyId(campaign.id);
     try {
-      const r = await invoke({ action: "retry", campaign_id: id });
-      if (r.success) await invoke({ action: "process-queue" });
+      const response = await invoke({ action, campaign_id: campaign.id });
+      if (response.success && ["retry", "resume-campaign"].includes(action))
+        await invoke({ action: "process-queue" });
       await reload();
-      setNotice({ success: r.success, message: r.message });
-    } catch (e) {
       setNotice({
-        success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        success: response.success,
+        message: response.message || `Berhasil ${labels[action]}.`,
       });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Aksi kampanye gagal." });
+    } finally {
+      setBusyId(null);
     }
   };
+
+  const showDetail = async (campaign: Campaign) => {
+    try {
+      const rows = await api(
+        `/rest/v1/campaign_recipients?campaign_id=eq.${campaign.id}&select=*&order=updated_at.desc&limit=5000`,
+        token,
+      );
+      setDetail({ campaign, rows });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Detail gagal dimuat." });
+    }
+  };
+
+  const exportReport = () => {
+    const rows = [
+      ["Kampanye", "Status", "Total", "Terkirim", "Gagal", "Dibuka", "Klik", "Jadwal"],
+      ...campaigns.map((campaign: Campaign) => [
+        campaign.name,
+        campaign.status,
+        campaign.total_count,
+        campaign.sent_count,
+        campaign.failed_count,
+        campaign.opened_count ?? 0,
+        campaign.clicked_count ?? 0,
+        campaign.scheduled_at ?? "Langsung",
+      ]),
+    ];
+    const csv = "\uFEFF" + rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "laporan-kampanye-safar-mail.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
-      <PageHeading title="Riwayat Pengiriman" description="Pantau hasil kampanye dan ulangi email yang gagal." icon={<History />} />
+      <PageHeading title="Riwayat Pengiriman" description="Pantau delivery, open, click, dan kendalikan kampanye." icon={<History />} />
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" onClick={exportReport}>
+          <FileSpreadsheet /> Export Laporan
+        </Button>
+      </div>
       <Card>
         <CardContent className="overflow-x-auto p-0">
-          <CampaignTable campaigns={campaigns} retry={retry} />
+          <CampaignTable
+            campaigns={campaigns}
+            busyId={busyId}
+            onAction={runAction}
+            onDetail={showDetail}
+          />
         </CardContent>
       </Card>
+      {detail && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle>Detail: {detail.campaign.name}</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">{detail.rows.length} penerima</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setDetail(null)}>Tutup</Button>
+          </CardHeader>
+          <CardContent className="overflow-x-auto p-0">
+            <table className="min-w-[900px] w-full text-sm">
+              <thead><tr className="border-y bg-slate-50 text-left">
+                <Th>Email</Th><Th>Status</Th><Th>Percobaan</Th><Th>Dibuka</Th><Th>Klik</Th><Th>Error</Th>
+              </tr></thead>
+              <tbody>
+                {detail.rows.map((row: any) => (
+                  <tr key={row.id} className="border-b">
+                    <Td>{row.email}</Td>
+                    <Td>{row.status}</Td>
+                    <Td>{row.attempts}</Td>
+                    <Td>{row.open_count ?? 0}</Td>
+                    <Td>{row.click_count ?? 0}</Td>
+                    <Td>{row.last_error || "—"}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }
 
-function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
+function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNotice }: any) {
   const [token, setToken] = useState(""),
     [fromName, setFromName] = useState("Safar Iman"),
     [fromEmail, setFromEmail] = useState(""),
     [corporate, setCorporate] = useState(false),
     [verifyEmail, setVerifyEmail] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [staff, setStaff] = useState<any[]>([]),
+    [audits, setAudits] = useState<any[]>([]),
+    [newUser, setNewUser] = useState({
+      full_name: "",
+      email: "",
+      password: "",
+      role: "operator",
+    });
+  const loadAdministration = async () => {
+    if (!admin) return;
+    try {
+      const [users, logs] = await Promise.all([
+        invoke({ action: "list-users" }),
+        api("/rest/v1/audit_logs?select=*&order=created_at.desc&limit=100", accessToken),
+      ]);
+      setStaff(users.users ?? []);
+      setAudits(logs ?? []);
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Data admin gagal dimuat." });
+    }
+  };
+  useEffect(() => {
+    loadAdministration();
+  }, [admin]);
+
+  const createStaff = async () => {
+    setBusy(true);
+    try {
+      const response = await invoke({ action: "create-user", ...newUser, active: true });
+      setNotice({ success: response.success, message: response.message });
+      if (response.success) {
+        setNewUser({ full_name: "", email: "", password: "", role: "operator" });
+        await loadAdministration();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateStaff = async (user: any, updates: any) => {
+    const response = await invoke({
+      action: "update-user",
+      user_id: user.id,
+      role: updates.role ?? user.role,
+      active: updates.active ?? user.active,
+    });
+    setNotice({ success: response.success, message: response.message });
+    if (response.success) await loadAdministration();
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -2273,6 +2824,66 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
           </Button>
         </CardContent>
       </Card>
+      {admin && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Manajemen Admin & Operator</CardTitle>
+              <p className="text-sm text-slate-500">
+                Buat akun staf dan atur status serta hak aksesnya.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Input placeholder="Nama lengkap" value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
+                <Input type="email" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+                <Input type="password" placeholder="Password minimal 8 karakter" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+                <select className="h-11 rounded-xl border border-slate-200 bg-white px-3" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+                  <option value="operator">Operator</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <Button disabled={busy || !newUser.email || newUser.password.length < 8} onClick={createStaff}>
+                Buat Akun Staf
+              </Button>
+              <div className="divide-y rounded-2xl border">
+                {staff.map((user) => (
+                  <div key={user.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <b className="block truncate">{user.full_name || user.email}</b>
+                      <span className="text-xs text-slate-500">{user.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select className="h-9 rounded-xl border bg-white px-2 text-sm" value={user.role} onChange={(e) => updateStaff(user, { role: e.target.value })}>
+                        <option value="operator">Operator</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <Button size="sm" variant="outline" onClick={() => updateStaff(user, { active: !user.active })}>
+                        {user.active ? "Nonaktifkan" : "Aktifkan"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Audit Aktivitas</CardTitle></CardHeader>
+            <CardContent className="max-h-96 overflow-auto p-0">
+              <div className="divide-y">
+                {audits.map((log) => (
+                  <div key={log.id} className="p-3 text-sm">
+                    <b>{log.action}</b>
+                    <p className="text-xs text-slate-500">
+                      {log.entity_type || "sistem"} · {new Date(log.created_at).toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
       {provider && (
         <Card>
           <CardHeader>
@@ -2301,72 +2912,83 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
   );
 }
 
-function CampaignTable({ campaigns, retry }: any) {
+function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
-    <table className="min-w-[680px] w-full text-sm">
-      <thead>
-        <tr className="border-b bg-slate-50 text-left">
-          <Th>Kampanye</Th>
-          <Th>Status</Th>
-          <Th>Pengiriman</Th>
-          <Th>Jadwal</Th>
-          {retry && <Th>Aksi</Th>}
-        </tr>
-      </thead>
-      <tbody>
-        {campaigns.length ? (
-          campaigns.map((c: Campaign) => (
-            <tr key={c.id} className="border-b">
-              <Td>
-                <b>{c.name}</b>
-                <p className="max-w-xs truncate text-xs text-slate-500">
-                  {c.subject}
-                </p>
-              </Td>
-              <Td>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">
-                  {c.status}
-                </span>
-              </Td>
-              <Td>
-                {c.sent_count}/{c.total_count}
-                {c.failed_count > 0 && (
-                  <span className="ml-1 text-red-600">
-                    ({c.failed_count} gagal)
-                  </span>
-                )}
-              </Td>
-              <Td>
-                {c.scheduled_at
-                  ? new Date(c.scheduled_at).toLocaleString("id-ID")
-                  : "Langsung"}
-              </Td>
-              {retry && (
+      <table className="min-w-[980px] w-full text-sm">
+        <thead>
+          <tr className="border-b bg-slate-50 text-left">
+            <Th>Kampanye</Th>
+            <Th>Status</Th>
+            <Th>Pengiriman</Th>
+            <Th>Open</Th>
+            <Th>Click</Th>
+            <Th>Jadwal</Th>
+            {onAction && <Th>Aksi</Th>}
+          </tr>
+        </thead>
+        <tbody>
+          {campaigns.length ? (
+            campaigns.map((campaign: Campaign) => (
+              <tr key={campaign.id} className="border-b hover:bg-slate-50">
                 <Td>
-                  {c.failed_count > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => retry(c.id)}
-                    >
-                      Coba Lagi
-                    </Button>
+                  <b>{campaign.name}</b>
+                  <p className="max-w-xs truncate text-xs text-slate-500">{campaign.subject}</p>
+                </Td>
+                <Td>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
+                    {campaign.status}
+                  </span>
+                </Td>
+                <Td>
+                  {campaign.sent_count}/{campaign.total_count}
+                  {campaign.failed_count > 0 && (
+                    <span className="ml-1 text-red-600">({campaign.failed_count} gagal)</span>
                   )}
                 </Td>
-              )}
-            </tr>
-          ))
-        ) : (
-          <tr>
-            <Td>Belum ada kampanye.</Td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+                <Td>
+                  {campaign.opened_count ?? 0}
+                  <span className="ml-1 text-xs text-slate-400">
+                    ({campaign.sent_count ? Math.round(((campaign.opened_count ?? 0) / campaign.sent_count) * 100) : 0}%)
+                  </span>
+                </Td>
+                <Td>
+                  {campaign.clicked_count ?? 0}
+                  <span className="ml-1 text-xs text-slate-400">
+                    ({campaign.sent_count ? Math.round(((campaign.clicked_count ?? 0) / campaign.sent_count) * 100) : 0}%)
+                  </span>
+                </Td>
+                <Td>{campaign.scheduled_at ? new Date(campaign.scheduled_at).toLocaleString("id-ID") : "Langsung"}</Td>
+                {onAction && (
+                  <Td>
+                    <div className="flex flex-wrap gap-1">
+                      <Button size="sm" variant="outline" onClick={() => onDetail(campaign)}>Detail</Button>
+                      {["processing", "scheduled"].includes(campaign.status) && (
+                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("pause-campaign", campaign)}>Jeda</Button>
+                      )}
+                      {campaign.status === "paused" && (
+                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("resume-campaign", campaign)}>Lanjut</Button>
+                      )}
+                      {campaign.failed_count > 0 && (
+                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("retry", campaign)}>Coba Lagi</Button>
+                      )}
+                      {["draft", "scheduled", "processing", "paused"].includes(campaign.status) && (
+                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("cancel-campaign", campaign)}>Batalkan</Button>
+                      )}
+                    </div>
+                  </Td>
+                )}
+              </tr>
+            ))
+          ) : (
+            <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Belum ada kampanye.</td></tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
+
 function PageHeading({
   title,
   description,
