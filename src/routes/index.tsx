@@ -427,29 +427,110 @@ function Dashboard({
         </Card>
       </Center>
     );
+  const activeNav = nav.find((item) => item.id === view);
+  const content = (
+    <>
+      {notice && <NoticeBox notice={notice} />}
+      {view === "dashboard" && (
+        <Overview
+          campaigns={campaigns}
+          contacts={contacts.length}
+          stats={stats}
+          provider={provider}
+          sync={sync}
+          loading={loading}
+        />
+      )}
+      {view === "contacts" && (
+        <Contacts
+          contacts={contacts}
+          token={token}
+          userId={session.user.id}
+          reload={load}
+          setNotice={setNotice}
+        />
+      )}
+      {view === "templates" && (
+        <Templates
+          templates={templates}
+          contacts={contacts}
+          token={token}
+          userId={session.user.id}
+          reload={load}
+          setNotice={setNotice}
+        />
+      )}
+      {view === "compose" && (
+        <Compose
+          contacts={contacts}
+          templates={templates}
+          provider={provider}
+          invoke={invoke}
+          reload={load}
+          sync={sync}
+          setNotice={setNotice}
+        />
+      )}
+      {view === "history" && (
+        <HistoryView
+          campaigns={campaigns}
+          invoke={invoke}
+          reload={load}
+          setNotice={setNotice}
+        />
+      )}
+      {view === "settings" && (
+        <SettingsView
+          invoke={invoke}
+          sync={sync}
+          provider={provider}
+          admin={profile?.role === "admin"}
+          setNotice={setNotice}
+        />
+      )}
+    </>
+  );
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-20 border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-emerald-600 text-white">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ecfdf5_0,_#f8fafc_38%,_#f8fafc_100%)] text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-lg shadow-emerald-200">
               <Mail size={20} />
             </span>
-            <div>
-              <b>Safar Mail</b>
-              <p className="text-xs text-slate-500">
-                {profile?.role || "Memuat..."} · {session.user.email}
+            <div className="min-w-0">
+              <b className="block truncate text-sm sm:text-base">Safar Mail</b>
+              <p className="truncate text-xs text-slate-500">
+                {activeNav?.label} · {session.user.email}
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={onLogout}>
-            <LogOut /> Keluar
-          </Button>
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 size={18} className="animate-spin text-emerald-600" />}
+            <span className="hidden rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold capitalize text-emerald-700 sm:inline">
+              {profile?.role || "Memuat"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onLogout}
+              aria-label="Keluar"
+              className="rounded-xl"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Keluar</span>
+            </Button>
+          </div>
         </div>
       </header>
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[220px_1fr]">
-        <aside className="h-fit rounded-2xl border bg-white p-2 shadow-sm">
-          <nav className="grid gap-1 sm:grid-cols-3 lg:grid-cols-1">
+
+      <div className="mx-auto grid max-w-[1440px] gap-7 px-3 py-4 sm:px-6 sm:py-7 lg:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="sticky top-24 hidden h-fit rounded-3xl border border-white/80 bg-white/90 p-3 shadow-xl shadow-slate-200/50 backdrop-blur lg:block">
+          <div className="mb-3 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-4 text-white">
+            <p className="text-xs font-medium text-emerald-100">Email Marketing</p>
+            <p className="mt-1 font-semibold">Kelola kampanye lebih mudah</p>
+          </div>
+          <nav className="grid gap-1.5">
             {nav.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -457,75 +538,36 @@ function Dashboard({
                   setView(id);
                   setNotice(null);
                 }}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${view === id ? "bg-emerald-50 text-emerald-700" : "text-slate-600 hover:bg-slate-50"}`}
+                className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm font-medium transition-all ${view === id ? "bg-emerald-50 text-emerald-700 shadow-sm" : "text-slate-600 hover:translate-x-0.5 hover:bg-slate-50 hover:text-slate-900"}`}
               >
-                <Icon size={18} />
+                <span className={`grid size-8 place-items-center rounded-xl transition-colors ${view === id ? "bg-emerald-600 text-white" : "bg-slate-100 group-hover:bg-white"}`}>
+                  <Icon size={17} />
+                </span>
                 {label}
               </button>
             ))}
           </nav>
         </aside>
-        <main className="min-w-0 space-y-5">
-          {notice && <NoticeBox notice={notice} />}{" "}
-          {view === "dashboard" && (
-            <Overview
-              campaigns={campaigns}
-              contacts={contacts.length}
-              stats={stats}
-              provider={provider}
-              sync={sync}
-              loading={loading}
-            />
-          )}{" "}
-          {view === "contacts" && (
-            <Contacts
-              contacts={contacts}
-              token={token}
-              userId={session.user.id}
-              reload={load}
-              setNotice={setNotice}
-            />
-          )}{" "}
-          {view === "templates" && (
-            <Templates
-              templates={templates}
-              contacts={contacts}
-              token={token}
-              userId={session.user.id}
-              reload={load}
-              setNotice={setNotice}
-            />
-          )}{" "}
-          {view === "compose" && (
-            <Compose
-              contacts={contacts}
-              templates={templates}
-              provider={provider}
-              invoke={invoke}
-              reload={load}
-              sync={sync}
-              setNotice={setNotice}
-            />
-          )}{" "}
-          {view === "history" && (
-            <HistoryView
-              campaigns={campaigns}
-              invoke={invoke}
-              reload={load}
-              setNotice={setNotice}
-            />
-          )}{" "}
-          {view === "settings" && (
-            <SettingsView
-              invoke={invoke}
-              sync={sync}
-              provider={provider}
-              admin={profile?.role === "admin"}
-              setNotice={setNotice}
-            />
-          )}
-        </main>
+
+        <main className="min-w-0 space-y-5 pb-24 lg:pb-8">{content}</main>
       </div>
+
+      <nav className="fixed inset-x-2 bottom-2 z-40 grid grid-cols-6 rounded-2xl border border-white/80 bg-white/95 p-1.5 shadow-2xl shadow-slate-400/30 backdrop-blur-xl lg:hidden">
+        {nav.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => {
+              setView(id);
+              setNotice(null);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition ${view === id ? "bg-emerald-600 text-white" : "text-slate-500"}`}
+          >
+            <Icon size={18} />
+            <span className="w-full truncate">{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -540,10 +582,7 @@ function Overview({
 }: any) {
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Ringkasan</h2>
-        <p className="text-slate-500">Aktivitas email marketing terbaru.</p>
-      </div>
+      <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
           label="Kredit Mailketing"
@@ -803,12 +842,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
 
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Kontak</h2>
-        <p className="text-slate-500">
-          Kelola penerima dan variabel personalisasi.
-        </p>
-      </div>
+      <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
       <Card>
         <CardContent className="grid gap-3 p-5 sm:grid-cols-6">
           <Input
@@ -865,8 +899,8 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-auto p-0">
-          <table className="w-full text-sm">
+        <CardContent className="overflow-x-auto p-0">
+          <table className="min-w-[680px] w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50 text-left">
                 <Th>Kode</Th>
@@ -913,36 +947,53 @@ function Templates({
   const [f, setF] = useState({
     name: "",
     subject: "",
-    html_content: "<h2>Halo {{first_name}}</h2><p>Tulis isi email.</p>",
+    html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
   });
   const [preview, setPreview] = useState(true);
   const [savedPreview, setSavedPreview] = useState<string | null>(null);
+  const canonicalKeywords = [
+    { key: "kode", label: "Kode Pendaftaran" },
+    { key: "nama", label: "Nama Lengkap" },
+    { key: "email", label: "Email" },
+    { key: "whatsapp", label: "WhatsApp" },
+    { key: "kategori", label: "Kategori" },
+  ];
+  const legacyAliases = new Set([
+    "kode_pendaftaran",
+    "registration_code",
+    "daftar_nama",
+    "full_name",
+    "first_name",
+    "last_name",
+    "mobile",
+    "category",
+  ]);
   const customKeywords = Array.from(
     new Set(
       contacts.flatMap((contact: Contact) =>
         Object.keys(contact.custom_fields ?? {}),
       ),
     ),
-  ) as string[];
+  ).filter((keyword) => !legacyAliases.has(keyword));
   const keywords = [
-    "kode_pendaftaran",
-    "kode",
-    "registration_code",
-    "daftar_nama",
-    "nama",
-    "full_name",
-    "email",
-    "whatsapp",
-    "first_name",
-    "last_name",
-    "mobile",
-    "city",
-    "country",
-    "company",
-    "category",
-    "kategori",
-    ...customKeywords,
+    ...canonicalKeywords,
+    ...customKeywords.map((key) => ({ key, label: "Field tambahan" })),
   ];
+  const sample = contacts[0] as Contact | undefined;
+  const sampleVariables: Record<string, string> = {
+    kode: sample?.registration_code || "HXP-001",
+    nama:
+      sample?.full_name ||
+      [sample?.first_name, sample?.last_name].filter(Boolean).join(" ") ||
+      "Nama Penerima",
+    email: sample?.email || "penerima@email.com",
+    whatsapp: sample?.mobile || "081234567890",
+    kategori: sample?.category || "Umum",
+    ...(sample?.custom_fields ?? {}),
+  };
+  const renderPreview = (value: string) =>
+    value.replace(/{{\s*([^{}]+)\s*}}/g, (_, key) => sampleVariables[key] ?? `{{${key}}}`);
+
   const insertKeyword = (
     keyword: string,
     target: "subject" | "html_content",
@@ -972,13 +1023,7 @@ function Templates({
   };
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Template Email</h2>
-        <p className="text-slate-500">
-          Desain HTML dapat dilihat langsung. Keyword akan diganti dengan data
-          masing-masing kontak saat email dikirim.
-        </p>
-      </div>
+      <PageHeading title="Template Email" description="Buat desain HTML dan lihat hasil personalisasi secara langsung." icon={<LayoutTemplate />} />
       <Card>
         <CardContent className="space-y-4 p-5">
           <Field label="Nama template">
@@ -996,12 +1041,15 @@ function Templates({
           <div className="space-y-2">
             <Label>Keyword data kontak</Label>
             <div className="flex flex-wrap gap-2">
-              {keywords.map((keyword) => (
+              {keywords.map(({ key: keyword, label }) => (
                 <div
                   key={keyword}
                   className="flex overflow-hidden rounded-lg border bg-white text-xs"
                 >
-                  <span className="px-2 py-1.5 font-mono text-emerald-700">{`{{${keyword}}}`}</span>
+                  <span className="px-2 py-1.5">
+                    <b className="block font-medium text-slate-700">{label}</b>
+                    <code className="text-[11px] text-emerald-700">{`{{${keyword}}}`}</code>
+                  </span>
                   <button
                     type="button"
                     className="border-l px-2 hover:bg-slate-50"
@@ -1020,8 +1068,8 @@ function Templates({
               ))}
             </div>
             <p className="text-xs text-slate-500">
-              Field tambahan dari CSV akan muncul otomatis setelah kontak
-              diimpor.
+              Pilihan utama mengikuti field kontak. Keyword lama tetap didukung
+              di template yang sudah tersimpan.
             </p>
           </div>
           <Field label="HTML">
@@ -1054,13 +1102,13 @@ function Templates({
                   Preview Email
                 </p>
                 <p className="mt-1 font-semibold">
-                  {f.subject || "Tanpa subjek"}
+                  {renderPreview(f.subject) || "Tanpa subjek"}
                 </p>
               </div>
               <iframe
                 title="Preview template"
                 sandbox=""
-                srcDoc={f.html_content}
+                srcDoc={renderPreview(f.html_content)}
                 className="h-96 w-full bg-white"
               />
             </div>
@@ -1245,12 +1293,7 @@ function Compose({
   };
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Buat Kampanye</h2>
-        <p className="text-slate-500">
-          Kirim melalui sender standar Mailketing, sekarang atau terjadwal.
-        </p>
-      </div>
+      <PageHeading title="Buat Kampanye" description="Pilih penerima, susun email, lalu kirim sekarang atau terjadwal." icon={<Send />} />
       {provider?.credits?.data?.credits !== undefined &&
         recipients.length > provider.credits.data.credits && (
           <NoticeBox
@@ -1483,14 +1526,9 @@ function HistoryView({ campaigns, invoke, reload, setNotice }: any) {
   };
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Riwayat Pengiriman</h2>
-        <p className="text-slate-500">
-          Pantau hasil dan ulangi hanya email yang gagal.
-        </p>
-      </div>
+      <PageHeading title="Riwayat Pengiriman" description="Pantau hasil kampanye dan ulangi email yang gagal." icon={<History />} />
       <Card>
-        <CardContent className="overflow-auto p-0">
+        <CardContent className="overflow-x-auto p-0">
           <CampaignTable campaigns={campaigns} retry={retry} />
         </CardContent>
       </Card>
@@ -1545,13 +1583,7 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
   };
   return (
     <>
-      <div>
-        <h2 className="text-2xl font-bold">Pengaturan API</h2>
-        <p className="text-slate-500">
-          Token disimpan terenkripsi di Supabase Vault dan tidak pernah
-          ditampilkan kembali.
-        </p>
-      </div>
+      <PageHeading title="Pengaturan API" description="Kelola koneksi Mailketing dan sender dengan aman." icon={<Settings />} />
       <Card>
         <CardContent className="space-y-4 p-5">
           {!admin && (
@@ -1652,7 +1684,7 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
 
 function CampaignTable({ campaigns, retry }: any) {
   return (
-    <table className="w-full text-sm">
+    <table className="min-w-[680px] w-full text-sm">
       <thead>
         <tr className="border-b bg-slate-50 text-left">
           <Th>Kampanye</Th>
@@ -1714,6 +1746,28 @@ function CampaignTable({ campaigns, retry }: any) {
     </table>
   );
 }
+function PageHeading({
+  title,
+  description,
+  icon,
+}: {
+  title: string;
+  description: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm backdrop-blur sm:p-5">
+      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
+        <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 function Stat({
   label,
   value,
