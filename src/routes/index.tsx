@@ -82,7 +82,7 @@ export const Route = createFileRoute("/")({
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function tokenIssuedAt(token: string) {
   try {
-    const value = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const value = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
     return Number(JSON.parse(atob(value)).iat) * 1000;
   } catch {
     return 0;
@@ -318,7 +318,8 @@ function Dashboard({
     [contacts, setContacts] = useState<Contact[]>([]),
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
-    [provider, setProvider] = useState<any>(null);
+    [provider, setProvider] = useState<any>(null),
+    [profileLoaded, setProfileLoaded] = useState(false);
   const load = async () => {
     setLoading(true);
     try {
@@ -334,7 +335,8 @@ function Dashboard({
           token,
         ),
       ]);
-      setProfile(p[0]);
+      setProfile(p[0] ?? null);
+      setProfileLoaded(true);
       setContacts(c);
       setTemplates(t);
       setCampaigns(h);
@@ -383,6 +385,33 @@ function Dashboard({
     { id: "history" as View, label: "Riwayat", icon: History },
     { id: "settings" as View, label: "Pengaturan", icon: Settings },
   ];
+  if (profileLoaded && !profile?.active)
+    return (
+      <Center>
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Akun belum aktif</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-600">
+            <p>
+              Akun <b>{session.user.email}</b>{" "}
+              {profile
+                ? "berstatus nonaktif."
+                : "belum memiliki profil di sistem."}{" "}
+              Minta admin mengaktifkan akun Anda, lalu masuk kembali.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => load()}>
+                Coba lagi
+              </Button>
+              <Button onClick={onLogout}>
+                <LogOut /> Keluar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </Center>
+    );
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-20 border-b bg-white">
@@ -562,7 +591,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     try {
       const text = await file.text(),
         lines = text.split(/\r?\n/).filter(Boolean),
-        cols = lines[0].split(",").map((x) => x.trim().toLowerCase()),
+        cols = (lines[0] ?? "").split(",").map((x) => x.trim().toLowerCase()),
         rows = lines
           .slice(1)
           .map((line) => {
