@@ -1,7 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const MAILKETING_URL = "https://stackapi.mailketing.co.id/api/v2";
-const MAILKETING_FALLBACK_URL = "https://api.mailketing.co.id/api/v2";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -28,25 +27,17 @@ const normalizeToken = (value: unknown) => {
 };
 
 const requestMailketing = async (token: string, path: string, body?: unknown, corporate = false) => {
-  const bases = corporate
-    ? [MAILKETING_FALLBACK_URL, MAILKETING_URL]
-    : [MAILKETING_URL, MAILKETING_FALLBACK_URL];
-  let last: Record<string, unknown> = { success: false, message: "Mailketing tidak dapat dihubungi.", http_status: 502 };
-  for (const base of bases) {
-    const response = await fetch(`${base}${corporate ? "/corporate" : ""}${path}`, {
-      method: body ? "POST" : "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "X-Api-Token": token,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const payload = await response.json().catch(() => ({ success: false, message: `HTTP ${response.status}` }));
-    last = { ...payload, http_status: response.status, api_host: new URL(base).host };
-    if (response.status !== 401 || payload.success) return last;
-  }
-  return last;
+  const response = await fetch(`${MAILKETING_URL}${corporate ? "/corporate" : ""}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "X-Api-Token": token,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const payload = await response.json().catch(() => ({ success: false, message: `HTTP ${response.status}` }));
+  return { ...payload, http_status: response.status };
 };
 
 export default {
