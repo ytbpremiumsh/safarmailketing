@@ -384,8 +384,6 @@ function Dashboard({
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
     [provider, setProvider] = useState<any>(null),
-    [providerUpdatedAt, setProviderUpdatedAt] = useState<Date | null>(null),
-    [providerRefreshing, setProviderRefreshing] = useState(false),
     [profileLoaded, setProfileLoaded] = useState(false),
     [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const load = async () => {
@@ -458,7 +456,6 @@ function Dashboard({
     if (syncInFlight.current) return;
     syncInFlight.current = true;
     if (!options.silent) setLoading(true);
-    setProviderRefreshing(true);
     try {
       const d = await invoke({ action: "sync" });
       if (d.code === "ACCOUNT_INACTIVE") {
@@ -476,7 +473,6 @@ function Dashboard({
         return;
       }
       setProvider(d);
-      setProviderUpdatedAt(new Date());
       if (!options.silent) {
         setNotice({ success: d.success, message: d.message });
       }
@@ -489,7 +485,6 @@ function Dashboard({
       }
     } finally {
       syncInFlight.current = false;
-      setProviderRefreshing(false);
       if (!options.silent) setLoading(false);
     }
   };
@@ -569,10 +564,6 @@ function Dashboard({
           contacts={contacts.length}
           stats={stats}
           provider={provider}
-          sync={sync}
-          loading={loading}
-          providerRefreshing={providerRefreshing}
-          providerUpdatedAt={providerUpdatedAt}
         />
       )}
       {view === "contacts" && (
@@ -735,31 +726,17 @@ function Overview({
   contacts,
   stats,
   provider,
-  sync,
-  loading,
-  providerRefreshing,
-  providerUpdatedAt,
 }: any) {
   const creditBalance = getCreditBalance(provider);
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="relative">
-          <Stat
-            label="Kredit Mailketing"
-            value={creditBalance ?? "—"}
-            icon={<Mail />}
-          />
-          <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className={`size-1.5 rounded-full ${providerRefreshing ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`} />
-            {providerRefreshing
-              ? "Memperbarui..."
-              : providerUpdatedAt
-                ? `Diperbarui ${providerUpdatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-                : "Menghubungkan..."}
-          </div>
-        </div>
+        <Stat
+          label="Kredit Mailketing"
+          value={creditBalance ?? "—"}
+          icon={<Mail />}
+        />
         <Stat label="Total kontak" value={contacts} icon={<Users />} />
         <Stat label="Total penerima" value={stats.total} icon={<Send />} />
         <Stat label="Berhasil terkirim" value={stats.sent} icon={<CheckCircle2 />} />
@@ -818,11 +795,8 @@ function Overview({
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle>Kampanye Terbaru</CardTitle>
-          <Button variant="outline" onClick={() => sync()} disabled={loading || providerRefreshing}>
-            <RefreshCw className={loading || providerRefreshing ? "animate-spin" : ""} /> Perbarui sekarang
-          </Button>
         </CardHeader>
         <CardContent>
           <CampaignTable campaigns={campaigns.slice(0, 5)} />
