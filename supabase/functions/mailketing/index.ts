@@ -56,7 +56,7 @@ const addTracking = async (
     (_, quote, target) =>
       `href=${quote}${base}&a=click&u=${encodeURIComponent(target)}${quote}`,
   );
-  return `${links}<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div><img src="${base}&a=open" width="1" height="1" alt="" style="display:block;width:1px;height:1px;opacity:0" />`;
+  return `${links}<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&amp;a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div><img src="${base}&amp;a=open" width="1" height="1" alt="" style="display:block;width:1px;height:1px;opacity:0" />`;
 };
 
 const requestMailketing = async (token: string, path: string, body?: unknown, corporate = false) => {
@@ -304,8 +304,8 @@ export default {
         const recipients = requested.filter((item: any) => !blocked.has(String(item.email).trim().toLowerCase()));
         if (!recipients.length) return json({ success: false, message: "Semua penerima berada di daftar unsubscribe/blacklist." }, 422);
         const creditCheck = await provider("/credits");
-        const credits = Number(creditCheck?.data?.credits ?? 0);
-        if (creditCheck.success && recipients.length > credits) {
+        const credits = extractCreditBalance(creditCheck) ?? 0;
+        if (creditCheck.success !== false && recipients.length > credits) {
           return json({ success: false, code: "INSUFFICIENT_CREDITS", message: `Kredit tidak cukup. Dibutuhkan ${recipients.length}, tersedia ${credits}.` }, 422);
         }
         const status = campaign.scheduled_at ? "scheduled" : "processing";
@@ -383,20 +383,42 @@ export default {
               url,
               secret,
             );
-            const response = await provider("/send", {
+            const sendPayload = {
               from_name: campaign.from_name,
               from_email: campaign.from_email,
               subject: interpolate(campaign.subject, variables),
               recipient: recipient.email,
-              content: trackedContent,
               ...(campaign.attachments?.[0] ? { attach1: campaign.attachments[0] } : {}),
               ...(campaign.attachments?.[1] ? { attach2: campaign.attachments[1] } : {}),
               ...(campaign.attachments?.[2] ? { attach3: campaign.attachments[2] } : {}),
+            };
+            let response = await provider("/send", {
+              ...sendPayload,
+              content: trackedContent,
             });
+            let trackingFallback = false;
+            if (
+              !response.success &&
+              /internal server error/i.test(String(response.message ?? ""))
+            ) {
+              console.warn("Mailketing rejected tracked HTML; retrying original content", {
+                campaign_id: campaign.id,
+                recipient_id: recipient.id,
+                provider_status: response.http_status,
+              });
+              response = await provider("/send", {
+                ...sendPayload,
+                content: personalizedContent,
+              });
+              trackingFallback = Boolean(response.success);
+            }
+            const providerMessage = trackingFallback
+              ? `${response.message ?? "Email queued successfully"} (tracking fallback)`
+              : response.message;
             await admin.from("campaign_recipients").update(response.success ? {
-              status: "queued", message_id: response.data?.message_id ?? null, provider_message: response.message, queued_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+              status: "queued", message_id: response.data?.message_id ?? null, provider_message: providerMessage, last_error: null, queued_at: new Date().toISOString(), updated_at: new Date().toISOString(),
             } : {
-              status: "failed", last_error: response.message, provider_message: response.message, updated_at: new Date().toISOString(),
+              status: "failed", last_error: response.message ?? "Pengiriman ditolak Mailketing.", provider_message: providerMessage, updated_at: new Date().toISOString(),
             }).eq("id", recipient.id);
             processed++;
           }
