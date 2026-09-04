@@ -54,7 +54,12 @@ export default {
     const userId = authData.user.id;
       const { data: profile } = await admin
         .from("profiles").select("role,active").eq("id", userId).single();
-      if (!profile?.active) return json({ success: false, message: "Akun tidak aktif." }, 403);
+      // An inactive account is an expected application state, not a crashed
+      // function. Return a normal response so clients can render the account
+      // status instead of treating the request as an unhandled runtime error.
+      if (!profile?.active) {
+        return json({ success: false, code: "ACCOUNT_INACTIVE", message: "Akun tidak aktif." });
+      }
 
       const input = await request.json().catch(() => ({}));
       const action = String(input.action ?? "");

@@ -361,6 +361,18 @@ function Dashboard({
     setLoading(true);
     try {
       const d = await invoke({ action: "sync" });
+      if (d.code === "ACCOUNT_INACTIVE") {
+        setProvider(null);
+        setProfile((current: any) =>
+          current ? { ...current, active: false } : current,
+        );
+        setProfileLoaded(true);
+        setNotice({
+          success: false,
+          message: "Akun Anda belum aktif. Hubungi admin untuk mengaktifkannya.",
+        });
+        return;
+      }
       setProvider(d);
       setNotice({ success: d.success, message: d.message });
     } catch (e) {
