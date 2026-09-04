@@ -318,7 +318,8 @@ function Dashboard({
     [contacts, setContacts] = useState<Contact[]>([]),
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
-    [provider, setProvider] = useState<any>(null);
+    [provider, setProvider] = useState<any>(null),
+    [profileLoaded, setProfileLoaded] = useState(false);
   const load = async () => {
     setLoading(true);
     try {
