@@ -46,6 +46,7 @@ type Contact = {
   first_name?: string;
   last_name?: string;
   mobile?: string;
+  category?: string;
   custom_fields?: Record<string, string>;
 };
 type Template = {
@@ -578,8 +579,10 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     full_name: "",
     email: "",
     mobile: "",
+    category: "Umum",
   };
   const [form, setForm] = useState(emptyForm);
+  const [importCategory, setImportCategory] = useState("Umum");
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -754,6 +757,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           const contact: Record<string, unknown> = {
             created_by: userId,
             source: file.name.toLowerCase().endsWith(".xlsx") ? "excel" : "csv",
+            category: importCategory.trim() || "Umum",
           };
           headers.forEach((header, index) => {
             const field = aliases[header];
@@ -806,7 +810,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
         </p>
       </div>
       <Card>
-        <CardContent className="grid gap-3 p-5 sm:grid-cols-5">
+        <CardContent className="grid gap-3 p-5 sm:grid-cols-6">
           <Input
             placeholder="Kode Pendaftaran"
             value={form.registration_code}
@@ -830,9 +834,19 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             value={form.mobile}
             onChange={(e) => setForm({ ...form, mobile: e.target.value })}
           />
+          <Input
+            placeholder="Kategori"
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+          />
           <Button onClick={save} disabled={busy || !form.email}>
             Tambah
           </Button>
+          <Input
+            placeholder="Kategori untuk hasil import"
+            value={importCategory}
+            onChange={(e) => setImportCategory(e.target.value)}
+          />
           <label className="sm:col-span-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
             <Upload size={18} /> Import Excel/CSV: Kode | Daftar Nama | Email |
             WhatsApp
@@ -859,6 +873,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                 <Th>Daftar Nama</Th>
                 <Th>Email</Th>
                 <Th>WhatsApp</Th>
+                <Th>Kategori</Th>
               </tr>
             </thead>
             <tbody>
@@ -872,6 +887,11 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                   </Td>
                   <Td>{c.email}</Td>
                   <Td>{c.mobile || "—"}</Td>
+                  <Td>
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                      {c.category || "Umum"}
+                    </span>
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -919,6 +939,8 @@ function Templates({
     "city",
     "country",
     "company",
+    "category",
+    "kategori",
     ...customKeywords,
   ];
   const insertKeyword = (
@@ -1104,11 +1126,24 @@ function Compose({
     }),
     [selected, setSelected] = useState<string[]>([]),
     [manual, setManual] = useState(""),
+    [categoryFilter, setCategoryFilter] = useState("all"),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState(false);
   const senders = (provider?.senders?.data?.senders ?? [])
     .map((s: any) => s.sender_email ?? s.email)
     .filter(Boolean);
+  const categories = Array.from(
+    new Set(
+      contacts.map((contact: Contact) => contact.category || "Umum"),
+    ),
+  ).sort() as string[];
+  const visibleContacts =
+    categoryFilter === "all"
+      ? contacts
+      : contacts.filter(
+          (contact: Contact) =>
+            (contact.category || "Umum") === categoryFilter,
+        );
   useEffect(() => {
     if (!provider) sync();
   }, []);
@@ -1140,6 +1175,8 @@ function Compose({
           first_name: c.first_name ?? c.full_name ?? "",
           last_name: c.last_name ?? "",
           mobile: c.mobile ?? "",
+          category: c.category ?? "Umum",
+          kategori: c.category ?? "Umum",
           ...(c.custom_fields ?? {}),
         },
       }));
@@ -1273,8 +1310,57 @@ function Compose({
             />
           </Field>
           <Field label="Kontak tersimpan">
+            <div className="mb-3 flex flex-wrap gap-2">
+              <select
+                className="h-10 rounded-md border bg-white px-3 text-sm"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">Semua kategori</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setSelected(
+                    Array.from(
+                      new Set([
+                        ...selected,
+                        ...visibleContacts.map((contact: Contact) => contact.id),
+                      ]),
+                    ),
+                  )
+                }
+              >
+                Pilih semua kategori ini
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setSelected(
+                    selected.filter(
+                      (id) =>
+                        !visibleContacts.some(
+                          (contact: Contact) => contact.id === id,
+                        ),
+                    ),
+                  )
+                }
+              >
+                Kosongkan kategori ini
+              </Button>
+            </div>
+            <p className="mb-2 text-xs text-slate-500">
+              {visibleContacts.length} kontak tampil, {selected.length} dipilih.
+            </p>
             <div className="max-h-48 overflow-auto rounded-xl border p-3">
-              {contacts.map((c: Contact) => (
+              {visibleContacts.map((c: Contact) => (
                 <label key={c.id} className="flex gap-2 py-1 text-sm">
                   <input
                     type="checkbox"
@@ -1287,7 +1373,12 @@ function Compose({
                       )
                     }
                   />
-                  {c.email} {c.first_name && `— ${c.first_name}`}
+                  <span>
+                    {c.email} — {c.full_name || c.first_name || "Tanpa nama"}
+                    <span className="ml-2 text-xs text-emerald-700">
+                      [{c.category || "Umum"}]
+                    </span>
+                  </span>
                 </label>
               ))}
             </div>
