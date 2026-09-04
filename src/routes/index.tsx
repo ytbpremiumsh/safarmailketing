@@ -12,6 +12,7 @@ import {
   Loader2,
   LogOut,
   Mail,
+  Pencil,
   RefreshCw,
   Search,
   Send,
@@ -1413,6 +1414,8 @@ function Templates({
   });
   const [preview, setPreview] = useState(true);
   const [savedPreview, setSavedPreview] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const canonicalKeywords = [
     { key: "kode", label: "Kode Pendaftaran" },
     { key: "nama", label: "Nama Lengkap" },
@@ -1466,27 +1469,81 @@ function Templates({
       [target]: `${current[target]}${current[target] ? " " : ""}${value}`,
     }));
   };
+  const resetEditor = () => {
+    setEditingId(null);
+    setF({
+      name: "",
+      subject: "",
+      html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
+    });
+  };
+  const editTemplate = (template: Template) => {
+    setEditingId(template.id);
+    setF({
+      name: template.name,
+      subject: template.subject,
+      html_content: template.html_content,
+    });
+    setPreview(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const save = async () => {
+    setSaving(true);
     try {
-      await api("/rest/v1/templates", token, {
-        method: "POST",
-        headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ ...f, created_by: userId }),
-      });
+      await api(
+        editingId
+          ? `/rest/v1/templates?id=eq.${editingId}`
+          : "/rest/v1/templates",
+        token,
+        {
+          method: editingId ? "PATCH" : "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(
+            editingId ? f : { ...f, created_by: userId },
+          ),
+        },
+      );
+      const wasEditing = Boolean(editingId);
       await reload();
-      setF({ name: "", subject: "", html_content: "" });
-      setNotice({ success: true, message: "Template disimpan." });
+      resetEditor();
+      setNotice({
+        success: true,
+        message: wasEditing
+          ? "Perubahan template berhasil disimpan."
+          : "Template baru berhasil disimpan.",
+      });
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: e instanceof Error ? e.message : "Gagal menyimpan template.",
       });
+    } finally {
+      setSaving(false);
     }
   };
   return (
     <>
       <PageHeading title="Template Email" description="Buat desain HTML dan lihat hasil personalisasi secara langsung." icon={<LayoutTemplate />} />
       <Card>
+        <CardHeader className="border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>
+                {editingId ? "Edit Template" : "Buat Template Baru"}
+              </CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                {editingId
+                  ? "Ubah isi template lalu simpan perubahan."
+                  : "Susun template yang dapat digunakan pada kampanye."}
+              </p>
+            </div>
+            {editingId && (
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                Mode edit
+              </span>
+            )}
+          </div>
+        </CardHeader>
         <CardContent className="space-y-4 p-5">
           <Field label="Nama template">
             <Input
@@ -1545,10 +1602,16 @@ function Templates({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={save}
-              disabled={!f.name || !f.subject || !f.html_content}
+              disabled={saving || !f.name || !f.subject || !f.html_content}
             >
-              Simpan Template
+              {saving ? <Loader2 className="animate-spin" /> : editingId ? <Pencil /> : <LayoutTemplate />}
+              {editingId ? "Simpan Perubahan" : "Simpan Template"}
             </Button>
+            {editingId && (
+              <Button type="button" variant="outline" onClick={resetEditor}>
+                Batal Edit
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -1585,16 +1648,25 @@ function Templates({
               <p className="truncate text-sm text-slate-500">{t.subject}</p>
             </CardHeader>
             <CardContent>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => editTemplate(t)}
+                >
+                  <Pencil /> Edit Template
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
                   setSavedPreview(savedPreview === t.id ? null : t.id)
                 }
-              >
-                {savedPreview === t.id ? "Tutup Preview" : "Lihat Preview"}
-              </Button>
+                >
+                  {savedPreview === t.id ? "Tutup Preview" : "Lihat Preview"}
+                </Button>
+              </div>
               {savedPreview === t.id && (
                 <div className="mt-3 overflow-hidden rounded-lg border">
                   <div className="border-b bg-slate-50 px-3 py-2 text-sm font-medium">
@@ -1603,7 +1675,7 @@ function Templates({
                   <iframe
                     title={`Preview ${t.name}`}
                     sandbox=""
-                    srcDoc={t.html_content}
+                    srcDoc={renderPreview(t.html_content)}
                     className="h-80 w-full bg-white"
                   />
                 </div>
