@@ -37,6 +37,26 @@ const headers = (token?: string) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
+const getCreditBalance = (provider: any): number | undefined => {
+  const candidates = [
+    provider?.credit_balance,
+    provider?.credits?.data?.credits,
+    provider?.credits?.data?.credit,
+    provider?.credits?.credits,
+    provider?.credits?.credit,
+    provider?.credits?.saldo,
+    provider?.credits?.data?.saldo,
+  ];
+  const raw = candidates.find(
+    (value) => value !== undefined && value !== null && value !== "",
+  );
+  if (raw === undefined) return undefined;
+  const normalized =
+    typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 type Notice = { success: boolean; message: string };
 type Session = {
   access_token: string;
@@ -720,6 +740,7 @@ function Overview({
   providerRefreshing,
   providerUpdatedAt,
 }: any) {
+  const creditBalance = getCreditBalance(provider);
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
@@ -727,7 +748,7 @@ function Overview({
         <div className="relative">
           <Stat
             label="Kredit Mailketing"
-            value={provider?.credits?.data?.credits ?? "—"}
+            value={creditBalance ?? "—"}
             icon={<Mail />}
           />
           <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-1.5 text-[10px] text-slate-500">
@@ -2339,7 +2360,7 @@ function Compose({
           },
         });
       } else {
-        const availableCredits = Number(provider?.credits?.data?.credits ?? 0);
+        const availableCredits = getCreditBalance(provider) ?? 0;
         if (availableCredits && recipients.length > availableCredits)
           throw new Error(
             `Kredit tidak cukup: perlu ${recipients.length}, tersedia ${availableCredits}.`,
@@ -2387,12 +2408,12 @@ function Compose({
   return (
     <>
       <PageHeading title="Buat Kampanye" description="Pilih penerima, susun email, lalu kirim sekarang atau terjadwal." icon={<Send />} />
-      {provider?.credits?.data?.credits !== undefined &&
-        recipients.length > provider.credits.data.credits && (
+      {getCreditBalance(provider) !== undefined &&
+        recipients.length > (getCreditBalance(provider) ?? 0) && (
           <NoticeBox
             notice={{
               success: false,
-              message: `Kredit tidak cukup: perlu ${recipients.length}, tersedia ${provider.credits.data.credits}.`,
+              message: `Kredit tidak cukup: perlu ${recipients.length}, tersedia ${getCreditBalance(provider)}.`,
             }}
           />
         )}
