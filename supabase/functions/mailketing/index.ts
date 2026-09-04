@@ -91,14 +91,32 @@ export default {
 
       const input = await request.json().catch(() => ({}));
       const action = String(input.action ?? "");
-      const adminOnly = ["save-settings", "retry", "process-queue", "pause-campaign", "resume-campaign", "cancel-campaign", "list-users", "create-user", "update-user"];
+      const adminOnly = ["get-settings", "save-settings", "retry", "process-queue", "pause-campaign", "resume-campaign", "cancel-campaign", "list-users", "create-user", "update-user"];
       if (adminOnly.includes(action) && profile.role !== "admin") {
         return json({ success: false, message: "Akses khusus admin." }, 403);
       }
 
+      if (action === "get-settings") {
+        const [{ data: settings, error: settingsError }, { data: storedToken, error: tokenError }] = await Promise.all([
+          admin.from("app_settings")
+            .select("default_from_name,default_from_email,corporate_mode,updated_at")
+            .eq("id", true)
+            .maybeSingle(),
+          admin.rpc("read_mailketing_token"),
+        ]);
+        if (settingsError) return json({ success: false, message: settingsError.message }, 400);
+        return json({
+          success: true,
+          settings: settings ?? {},
+          token_configured: !tokenError && Boolean(normalizeToken(storedToken)),
+        });
+      }
+
       if (action === "save-settings") {
-        const token = normalizeToken(input.token);
-        if (token.length < 8) return json({ success: false, message: "Token tidak valid." }, 422);
+        const submittedToken = normalizeToken(input.token);
+        const { data: storedToken } = await admin.rpc("read_mailketing_token");
+        const token = submittedToken || normalizeToken(storedToken);
+        if (token.length < 8) return json({ success: false, message: "Token Mailketing wajib diisi." }, 422);
         const validation = await requestMailketing(token, "/credits");
         if (!validation.success) {
           return json({
@@ -109,16 +127,25 @@ export default {
             provider_status: validation.http_status,
           }, validation.http_status === 429 ? 429 : 422);
         }
-        const { error } = await admin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
-        if (error) return json({ success: false, message: error.message }, 400);
-        await admin.from("app_settings").update({
+        if (submittedToken) {
+          const { error } = await admin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
+          if (error) return json({ success: false, message: error.message }, 400);
+        }
+        const { error: settingsError } = await admin.from("app_settings").update({
           default_from_name: input.default_from_name || null,
           default_from_email: input.default_from_email || null,
           corporate_mode: Boolean(input.corporate_mode),
           updated_by: userId,
           updated_at: new Date().toISOString(),
         }).eq("id", true);
-        return json({ success: true, message: "Pengaturan API tersimpan dengan aman." });
+        if (settingsError) return json({ success: false, message: settingsError.message }, 400);
+        return json({
+          success: true,
+          token_configured: true,
+          message: submittedToken
+            ? "Pengaturan API dan token tersimpan dengan aman."
+            : "Pengaturan API diperbarui. Token tersimpan tetap digunakan.",
+        });
       }
 
       if (action === "list-users") {
