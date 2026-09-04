@@ -92,6 +92,31 @@ const extractCreditBalance = (payload: any): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const extractVerifiedSenders = (payload: any): string[] => {
+  const emails = new Set<string>();
+  const visit = (value: any, depth = 0) => {
+    if (depth > 5 || value === null || value === undefined) return;
+    if (typeof value === "string") {
+      const email = value.trim().toLowerCase();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) emails.add(email);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") return;
+    [value.sender_email, value.from_email, value.email, value.address].forEach(
+      (item) => visit(item, depth + 1),
+    );
+    [value.data, value.senders, value.sender, value.items, value.results].forEach(
+      (item) => visit(item, depth + 1),
+    );
+  };
+  visit(payload);
+  return Array.from(emails);
+};
+
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -215,15 +240,31 @@ export default {
         requestMailketing(normalizeToken(token), path, body, corporate);
 
       if (action === "sync") {
-        const [credits, senders, lists] = await Promise.all([
-          provider("/credits"), provider("/senders"), provider("/lists"),
+        const [credits, senders, lists, settingsResult] = await Promise.all([
+          provider("/credits"),
+          provider("/senders"),
+          provider("/lists"),
+          admin.from("app_settings")
+            .select("default_from_email")
+            .eq("id", true)
+            .maybeSingle(),
         ]);
         const creditBalance = extractCreditBalance(credits);
+        const defaultSender = String(
+          settingsResult.data?.default_from_email ?? "",
+        ).trim().toLowerCase();
+        const verifiedSenders = Array.from(
+          new Set([
+            ...extractVerifiedSenders(senders),
+            ...(defaultSender ? [defaultSender] : []),
+          ]),
+        );
         return json({
           success: credits.success !== false && creditBalance !== null,
           credit_balance: creditBalance,
           credits,
           senders,
+          verified_senders: verifiedSenders,
           lists,
           message:
             creditBalance !== null
