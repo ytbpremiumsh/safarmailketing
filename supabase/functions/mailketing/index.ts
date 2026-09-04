@@ -13,6 +13,33 @@ const json = (body: unknown, status = 200) =>
 const interpolate = (value: string, variables: Record<string, unknown>) =>
   value.replace(/{{\s*([\w.]+)\s*}}/g, (_, key) => String(variables[key] ?? ""));
 
+const normalizeToken = (value: unknown) => {
+  let token = String(value ?? "").trim();
+  token = token.replace(/^['\"]|['\"]$/g, "");
+  token = token.replace(/^authorization\s*:\s*bearer\s+/i, "");
+  token = token.replace(/^bearer\s+/i, "");
+  token = token.replace(/^x-api-token\s*:\s*/i, "");
+  if (/api_token=/i.test(token)) {
+    try { token = new URL(token).searchParams.get("api_token") ?? token; }
+    catch { token = token.replace(/^.*api_token=/i, "").split(/[&#\s]/)[0]; }
+  }
+  return token.trim();
+};
+
+const requestMailketing = async (token: string, path: string, body?: unknown, corporate = false) => {
+  const response = await fetch(`${MAILKETING_URL}${corporate ? "/corporate" : ""}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "X-Api-Token": token,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const payload = await response.json().catch(() => ({ success: false, message: `HTTP ${response.status}` }));
+  return { ...payload, http_status: response.status };
+};
+
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -37,8 +64,18 @@ export default {
       }
 
       if (action === "save-settings") {
-        const token = String(input.token ?? "").trim();
+        const token = normalizeToken(input.token);
         if (token.length < 8) return json({ success: false, message: "Token tidak valid." }, 422);
+        const validation = await requestMailketing(token, "/credits");
+        if (!validation.success) {
+          return json({
+            success: false,
+            message: validation.http_status === 401
+              ? "Token ditolak Mailketing. Salin hanya nilai token dari Dashboard Mailketing → API Integration, tanpa label atau tanda kutip."
+              : validation.message,
+            provider_status: validation.http_status,
+          }, validation.http_status === 429 ? 429 : 422);
+        }
         const { error } = await admin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
         if (error) return json({ success: false, message: error.message }, 400);
         await admin.from("app_settings").update({
@@ -53,15 +90,8 @@ export default {
 
       const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
-      const provider = async (path: string, body?: unknown, corporate = false) => {
-        const response = await fetch(`${MAILKETING_URL}${corporate ? "/corporate" : ""}${path}`, {
-          method: body ? "POST" : "GET",
-          headers: { "Content-Type": "application/json", "X-Api-Token": token },
-          body: body ? JSON.stringify(body) : undefined,
-        });
-        const payload = await response.json().catch(() => ({ success: false, message: `HTTP ${response.status}` }));
-        return { ...payload, http_status: response.status };
-      };
+      const provider = (path: string, body?: unknown, corporate = false) =>
+        requestMailketing(normalizeToken(token), path, body, corporate);
 
       if (action === "sync") {
         const [credits, senders, lists] = await Promise.all([
