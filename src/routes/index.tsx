@@ -12,6 +12,8 @@ import {
   Loader2,
   LogOut,
   Mail,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   RefreshCw,
   Search,
@@ -325,7 +327,8 @@ function Dashboard({
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
     [provider, setProvider] = useState<any>(null),
-    [profileLoaded, setProfileLoaded] = useState(false);
+    [profileLoaded, setProfileLoaded] = useState(false),
+    [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const load = async () => {
     setLoading(true);
     try {
@@ -357,7 +360,21 @@ function Dashboard({
   };
   useEffect(() => {
     load();
+    try {
+      setSidebarCollapsed(
+        localStorage.getItem("safar-sidebar-collapsed") === "true",
+      );
+    } catch {}
   }, []);
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      try {
+        localStorage.setItem("safar-sidebar-collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
   const invoke = async (body: any) =>
     api("/functions/v1/mailketing", token, {
       method: "POST",
@@ -390,10 +407,20 @@ function Dashboard({
       setLoading(false);
     }
   };
+  const totalRecipients = campaigns.reduce((n, c) => n + c.total_count, 0);
+  const sentCount = campaigns.reduce((n, c) => n + c.sent_count, 0);
+  const failedCount = campaigns.reduce((n, c) => n + c.failed_count, 0);
+  const attemptedCount = sentCount + failedCount;
   const stats = {
-    sent: campaigns.reduce((n, c) => n + c.sent_count, 0),
-    failed: campaigns.reduce((n, c) => n + c.failed_count, 0),
+    campaigns: campaigns.length,
+    total: totalRecipients,
+    sent: sentCount,
+    failed: failedCount,
+    queued: Math.max(totalRecipients - attemptedCount, 0),
     scheduled: campaigns.filter((c) => c.status === "scheduled").length,
+    successRate: attemptedCount
+      ? Math.round((sentCount / attemptedCount) * 100)
+      : 0,
   };
   const nav = [
     { id: "dashboard" as View, label: "Ringkasan", icon: BarChart3 },
@@ -527,12 +554,33 @@ function Dashboard({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1440px] gap-7 px-3 py-4 sm:px-6 sm:py-7 lg:grid-cols-[250px_minmax(0,1fr)]">
-        <aside className="sticky top-24 hidden h-fit rounded-3xl border border-white/80 bg-white/90 p-3 shadow-xl shadow-slate-200/50 backdrop-blur lg:block">
-          <div className="mb-3 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-4 text-white">
-            <p className="text-xs font-medium text-emerald-100">Email Marketing</p>
-            <p className="mt-1 font-semibold">Kelola kampanye lebih mudah</p>
-          </div>
+      <div
+        className={`mx-auto grid max-w-[1440px] gap-5 px-3 py-4 transition-[grid-template-columns] duration-300 sm:px-6 sm:py-7 lg:gap-7 ${sidebarCollapsed ? "lg:grid-cols-[88px_minmax(0,1fr)]" : "lg:grid-cols-[250px_minmax(0,1fr)]"}`}
+      >
+        <aside className="sticky top-24 hidden h-fit overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-3 shadow-xl shadow-slate-200/50 backdrop-blur transition-all duration-300 lg:block">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className={`mb-3 flex w-full items-center rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white transition-all hover:shadow-lg ${sidebarCollapsed ? "justify-center p-3" : "justify-between p-4"}`}
+            title={sidebarCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+            aria-label={sidebarCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+          >
+            {!sidebarCollapsed && (
+              <span className="text-left">
+                <span className="block text-xs font-medium text-emerald-100">
+                  Email Marketing
+                </span>
+                <span className="mt-1 block text-sm font-semibold">
+                  Menu Utama
+                </span>
+              </span>
+            )}
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={20} />
+            ) : (
+              <PanelLeftClose size={20} />
+            )}
+          </button>
           <nav className="grid gap-1.5">
             {nav.map(({ id, label, icon: Icon }) => (
               <button
@@ -541,12 +589,14 @@ function Dashboard({
                   setView(id);
                   setNotice(null);
                 }}
-                className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm font-medium transition-all ${view === id ? "bg-emerald-50 text-emerald-700 shadow-sm" : "text-slate-600 hover:translate-x-0.5 hover:bg-slate-50 hover:text-slate-900"}`}
+                className={`group flex w-full items-center rounded-2xl py-3 text-left text-sm font-medium transition-all ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3.5"} ${view === id ? "bg-emerald-50 text-emerald-700 shadow-sm" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+                title={sidebarCollapsed ? label : undefined}
+                aria-label={label}
               >
-                <span className={`grid size-8 place-items-center rounded-xl transition-colors ${view === id ? "bg-emerald-600 text-white" : "bg-slate-100 group-hover:bg-white"}`}>
+                <span className={`grid size-8 shrink-0 place-items-center rounded-xl transition-colors ${view === id ? "bg-emerald-600 text-white" : "bg-slate-100 group-hover:bg-white"}`}>
                   <Icon size={17} />
                 </span>
-                {label}
+                {!sidebarCollapsed && <span>{label}</span>}
               </button>
             ))}
           </nav>
@@ -586,20 +636,55 @@ function Overview({
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <Stat
           label="Kredit Mailketing"
           value={provider?.credits?.data?.credits ?? "—"}
           icon={<Mail />}
         />
         <Stat label="Total kontak" value={contacts} icon={<Users />} />
-        <Stat
-          label="Email diantrekan"
-          value={stats.sent}
-          icon={<CheckCircle2 />}
-        />
-        <Stat label="Terjadwal" value={stats.scheduled} icon={<Clock3 />} />
+        <Stat label="Total penerima" value={stats.total} icon={<Send />} />
+        <Stat label="Berhasil terkirim" value={stats.sent} icon={<CheckCircle2 />} />
+        <Stat label="Gagal terkirim" value={stats.failed} icon={<AlertCircle />} />
+        <Stat label="Antre / terjadwal" value={stats.queued} icon={<Clock3 />} />
       </div>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Statistik Pengiriman</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                Ringkasan dari {stats.campaigns} kampanye yang tersimpan.
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700">
+              {stats.successRate}% berhasil
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 transition-all duration-700"
+              style={{ width: `${stats.successRate}%` }}
+            />
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-2xl bg-emerald-50 p-3">
+              <p className="text-emerald-700">Terkirim</p>
+              <b className="mt-1 block text-xl text-emerald-900">{stats.sent}</b>
+            </div>
+            <div className="rounded-2xl bg-red-50 p-3">
+              <p className="text-red-700">Gagal</p>
+              <b className="mt-1 block text-xl text-red-900">{stats.failed}</b>
+            </div>
+            <div className="rounded-2xl bg-amber-50 p-3">
+              <p className="text-amber-700">Dalam antrean</p>
+              <b className="mt-1 block text-xl text-amber-900">{stats.queued}</b>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Kampanye Terbaru</CardTitle>
