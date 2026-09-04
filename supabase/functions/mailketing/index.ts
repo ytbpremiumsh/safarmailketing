@@ -73,6 +73,52 @@ const requestMailketing = async (token: string, path: string, body?: unknown, co
   return { ...payload, http_status: response.status };
 };
 
+const requestMailketingV1Send = async (
+  token: string,
+  payload: Record<string, unknown>,
+) => {
+  const form = new URLSearchParams();
+  form.set("api_token", token);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      form.set(key, String(value));
+    }
+  });
+  const response = await fetch("https://api.mailketing.co.id/api/v1/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      "Accept": "application/json,text/plain,*/*",
+    },
+    body: form.toString(),
+  });
+  const raw = await response.text();
+  let data: any = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { message: raw };
+  }
+  const status = String(data.status ?? data.success ?? "").toLowerCase();
+  const message = String(
+    data.message ?? data.result ?? data.status_message ?? raw ?? "",
+  ).trim();
+  const success =
+    response.ok &&
+    (
+      data.success === true ||
+      ["success", "true", "1"].includes(status) ||
+      /mail sent|queued successfully|email queued|success/i.test(message)
+    );
+  return {
+    ...data,
+    success,
+    message: message || (success ? "Email queued successfully" : `HTTP ${response.status}`),
+    http_status: response.status,
+    transport: "mailketing-v1",
+  };
+};
+
 const extractCreditBalance = (payload: any): number | null => {
   const candidates = [
     payload?.data?.credits,
@@ -238,6 +284,21 @@ export default {
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
         requestMailketing(normalizeToken(token), path, body, corporate);
+      const sendEmail = async (payload: Record<string, unknown>) => {
+        const primary = await provider("/send", payload);
+        if (
+          primary.success ||
+          !/internal server error|http 5\d\d/i.test(
+            String(primary.message ?? `HTTP ${primary.http_status ?? ""}`),
+          )
+        ) {
+          return primary;
+        }
+        console.warn("Mailketing v2 send failed; using official v1 transport", {
+          provider_status: primary.http_status,
+        });
+        return requestMailketingV1Send(normalizeToken(token), payload);
+      };
 
       if (action === "sync") {
         const [credits, senders, lists, settingsResult] = await Promise.all([
@@ -280,7 +341,10 @@ export default {
       }
       if (action === "send-test") {
         const payload = { ...input.email, recipient: input.recipient };
-        return json(await provider("/send", payload, Boolean(input.corporate)));
+        if (input.corporate) {
+          return json(await provider("/send", payload, true));
+        }
+        return json(await sendEmail(payload));
       }
       if (action === "create-campaign") {
         const campaign = input.campaign ?? {};
@@ -392,7 +456,7 @@ export default {
               ...(campaign.attachments?.[1] ? { attach2: campaign.attachments[1] } : {}),
               ...(campaign.attachments?.[2] ? { attach3: campaign.attachments[2] } : {}),
             };
-            let response = await provider("/send", {
+            let response = await sendEmail({
               ...sendPayload,
               content: trackedContent,
             });
@@ -406,7 +470,7 @@ export default {
                 recipient_id: recipient.id,
                 provider_status: response.http_status,
               });
-              response = await provider("/send", {
+              response = await sendEmail({
                 ...sendPayload,
                 content: personalizedContent,
               });
