@@ -230,8 +230,8 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     }
   };
   return (
-    <div className="grid min-h-screen bg-slate-50 lg:grid-cols-2">
-      <div className="hidden bg-emerald-700 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+    <div className="grid min-h-screen bg-[radial-gradient(circle_at_top_right,_#d1fae5_0,_#f8fafc_45%,_#ffffff_100%)] lg:grid-cols-2">
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="flex items-center gap-3 text-xl font-bold">
           <span className="grid size-11 place-items-center rounded-xl bg-white/15">
             <Mail />
@@ -250,7 +250,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
         <p className="text-sm text-emerald-200">Safar Iman Email Marketing</p>
       </div>
       <Center>
-        <Card className="m-4 w-full max-w-md">
+        <Card className="m-4 w-full max-w-md border-white bg-white/90 shadow-2xl shadow-emerald-900/10">
           <CardHeader>
             <CardTitle>
               {mode === "login" ? "Masuk ke Dashboard" : "Buat Admin Pertama"}
@@ -844,7 +844,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     <>
       <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
       <Card>
-        <CardContent className="grid gap-3 p-5 sm:grid-cols-6">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-6">
           <Input
             placeholder="Kode Pendaftaran"
             value={form.registration_code}
@@ -881,7 +881,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             value={importCategory}
             onChange={(e) => setImportCategory(e.target.value)}
           />
-          <label className="sm:col-span-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
+          <label className="flex cursor-pointer sm:col-span-2 xl:col-span-4 items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
             <Upload size={18} /> Import Excel/CSV: Kode | Daftar Nama | Email |
             WhatsApp
             <input
@@ -1642,7 +1642,7 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
         <CardHeader>
           <CardTitle>Verifikasi Domain Corporate</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-2">
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
           <Input
             type="email"
             value={verifyEmail}
@@ -1684,6 +1684,7 @@ function SettingsView({ invoke, sync, provider, admin, setNotice }: any) {
 
 function CampaignTable({ campaigns, retry }: any) {
   return (
+    <div className="-mx-4 overflow-x-auto sm:mx-0">
     <table className="min-w-[680px] w-full text-sm">
       <thead>
         <tr className="border-b bg-slate-50 text-left">
@@ -1744,6 +1745,7 @@ function CampaignTable({ campaigns, retry }: any) {
         )}
       </tbody>
     </table>
+    </div>
   );
 }
 function PageHeading({
