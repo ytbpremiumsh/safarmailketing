@@ -567,6 +567,7 @@ function Dashboard({
           invoke={invoke}
           sync={sync}
           provider={provider}
+          token={token}
           admin={profile?.role === "admin"}
           setNotice={setNotice}
         />
@@ -2993,6 +2994,9 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     [fromEmail, setFromEmail] = useState(""),
     [corporate, setCorporate] = useState(false),
     [verifyEmail, setVerifyEmail] = useState(""),
+    [tokenConfigured, setTokenConfigured] = useState(false),
+    [settingsLoaded, setSettingsLoaded] = useState(false),
+    [settingsUpdatedAt, setSettingsUpdatedAt] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [staff, setStaff] = useState<any[]>([]),
     [audits, setAudits] = useState<any[]>([]),
@@ -3015,8 +3019,29 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setNotice({ success: false, message: e instanceof Error ? e.message : "Data admin gagal dimuat." });
     }
   };
+  const loadSettings = async () => {
+    if (!admin) return;
+    try {
+      const response = await invoke({ action: "get-settings" });
+      if (!response.success) throw new Error(response.message || "Pengaturan API gagal dimuat.");
+      const settings = response.settings ?? {};
+      setTokenConfigured(Boolean(response.token_configured));
+      setFromName(settings.default_from_name ?? "");
+      setFromEmail(settings.default_from_email ?? "");
+      setCorporate(Boolean(settings.corporate_mode));
+      setSettingsUpdatedAt(settings.updated_at ?? null);
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Pengaturan API gagal dimuat.",
+      });
+    } finally {
+      setSettingsLoaded(true);
+    }
+  };
   useEffect(() => {
     loadAdministration();
+    loadSettings();
   }, [admin]);
 
   const createStaff = async () => {
@@ -3057,7 +3082,8 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setNotice({ success: r.success, message: r.message });
       if (r.success) {
         setToken("");
-        await sync();
+        setTokenConfigured(true);
+        await Promise.all([sync(), loadSettings()]);
       }
     } catch (e) {
       setNotice({
@@ -3095,14 +3121,53 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
               }}
             />
           )}
-          <Field label="Token Mailketing">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <Label>Token Mailketing</Label>
+              {settingsLoaded && (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    tokenConfigured
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {tokenConfigured ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  {tokenConfigured ? "Sudah tersimpan" : "Belum diisi"}
+                </span>
+              )}
+            </div>
             <Input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="Token dari API Integration"
+              placeholder={
+                tokenConfigured
+                  ? "•••••••••••••••• (token tersimpan)"
+                  : "Token dari API Integration"
+              }
+              autoComplete="new-password"
             />
-          </Field>
+            <p className="mt-2 text-xs text-slate-500">
+              {tokenConfigured
+                ? "Token aktif sudah tersimpan dengan aman. Kosongkan kolom ini jika tidak ingin menggantinya."
+                : "Masukkan token Mailketing untuk mengaktifkan koneksi."}
+            </p>
+          </div>
+          {settingsLoaded && (tokenConfigured || fromName || fromEmail) && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <div className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 size={18} />
+                Konfigurasi API sudah tersimpan
+              </div>
+              <p className="mt-1 text-xs text-emerald-700">
+                Nama pengirim, email pengirim, mode API, dan status token di bawah ini adalah konfigurasi aktif.
+                {settingsUpdatedAt
+                  ? ` Terakhir diperbarui ${new Date(settingsUpdatedAt).toLocaleString("id-ID")}.`
+                  : ""}
+              </p>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama pengirim default">
               <Input
@@ -3128,7 +3193,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
           <div className="flex gap-2">
             <Button
               onClick={save}
-              disabled={!admin || busy || token.length < 8}
+              disabled={!admin || busy || (!tokenConfigured && token.length < 8)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <ShieldCheck /> Simpan Aman
