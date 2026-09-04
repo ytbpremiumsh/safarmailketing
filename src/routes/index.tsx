@@ -622,6 +622,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   };
   const [form, setForm] = useState(emptyForm);
   const [importCategory, setImportCategory] = useState("Umum");
+  const [bulkText, setBulkText] = useState("");
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -840,6 +841,76 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     URL.revokeObjectURL(url);
   };
 
+  const saveBulkContacts = async () => {
+    setBusy(true);
+    try {
+      const parsed = parseCsv(bulkText);
+      const firstIsHeader =
+        normalizeHeader(parsed[0]?.[0]) === "kode" &&
+        normalizeHeader(parsed[0]?.[2]) === "email";
+      const dataRows = firstIsHeader ? parsed.slice(1) : parsed;
+      const invalidLines: number[] = [];
+      const seen = new Set<string>();
+      const rows = dataRows
+        .map((values, index) => {
+          const [registrationCode, fullName, emailValue, mobile] = values;
+          const email = String(emailValue ?? "").trim().toLowerCase();
+          const lineNumber = index + (firstIsHeader ? 2 : 1);
+          if (
+            values.length < 4 ||
+            !registrationCode?.trim() ||
+            !fullName?.trim() ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+            !mobile?.trim()
+          ) {
+            invalidLines.push(lineNumber);
+            return null;
+          }
+          if (seen.has(email)) return null;
+          seen.add(email);
+          return {
+            registration_code: registrationCode.trim(),
+            full_name: fullName.trim(),
+            first_name: fullName.trim(),
+            email,
+            mobile: mobile.trim(),
+            category: importCategory.trim() || "Umum",
+            source: "bulk",
+            created_by: userId,
+          };
+        })
+        .filter(Boolean);
+
+      if (invalidLines.length) {
+        throw new Error(
+          `Periksa baris ${invalidLines.slice(0, 10).join(", ")}. Format wajib: Kode,Nama,Email,WhatsApp.`,
+        );
+      }
+      if (!rows.length) throw new Error("Belum ada kontak valid untuk disimpan.");
+
+      for (let i = 0; i < rows.length; i += 250) {
+        await api("/rest/v1/contacts?on_conflict=email", token, {
+          method: "POST",
+          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify(rows.slice(i, i + 250)),
+        });
+      }
+      setBulkText("");
+      await reload();
+      setNotice({
+        success: true,
+        message: `${rows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
+      });
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Input massal gagal.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
@@ -877,7 +948,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             Tambah
           </Button>
           <Input
-            placeholder="Kategori untuk hasil import"
+            placeholder="Kategori import dan input massal"
             value={importCategory}
             onChange={(e) => setImportCategory(e.target.value)}
           />
@@ -898,7 +969,52 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           </Button>
         </CardContent>
       </Card>
+ 
       <Card>
+        <CardHeader>
+          <CardTitle>Input Kontak Massal</CardTitle>
+          <p className="text-sm text-slate-500">
+            Tempel beberapa kontak. Gunakan satu baris untuk satu kontak tanpa
+            header.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs text-emerald-800">
+            Format: <code>Kode,Nama,Email,WhatsApp</code>
+            <br />
+            Contoh:{" "}
+            <code>
+              HXP-EFE8A860,tria Nurul
+              kamilah,tnurulkamilah@gmail.com,085800685672
+            </code>
+          </div>
+          <Textarea
+            rows={8}
+            className="font-mono text-sm"
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            placeholder={"HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672\nHXP-ABC123,Nama Kedua,emailkedua@gmail.com,081234567890"}
+          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Field label="Masukkan ke kategori">
+              <Input
+                value={importCategory}
+                onChange={(e) => setImportCategory(e.target.value)}
+                placeholder="Contoh: Peserta Essay"
+              />
+            </Field>
+            <Button
+              type="button"
+              onClick={saveBulkContacts}
+              disabled={busy || !bulkText.trim() || !importCategory.trim()}
+              className="sm:mb-0.5"
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <Users />}
+              Simpan Kontak Massal
+            </Button>
+          </div>
+        </CardContent>
+      </Card>     <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="min-w-[680px] w-full text-sm">
             <thead>
