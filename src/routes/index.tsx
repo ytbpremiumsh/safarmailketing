@@ -41,6 +41,8 @@ type Session = {
 type Contact = {
   id: string;
   email: string;
+  registration_code?: string;
+  full_name?: string;
   first_name?: string;
   last_name?: string;
   mobile?: string;
@@ -571,22 +573,28 @@ function Overview({
 }
 
 function Contacts({ contacts, token, userId, reload, setNotice }: any) {
-  const [form, setForm] = useState({
-      email: "",
-      first_name: "",
-      last_name: "",
-      mobile: "",
-    }),
-    [busy, setBusy] = useState(false);
+  const emptyForm = {
+    registration_code: "",
+    full_name: "",
+    email: "",
+    mobile: "",
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [busy, setBusy] = useState(false);
+
   const save = async () => {
     setBusy(true);
     try {
       await api("/rest/v1/contacts", token, {
         method: "POST",
         headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ ...form, created_by: userId }),
+        body: JSON.stringify({
+          ...form,
+          first_name: form.full_name,
+          created_by: userId,
+        }),
       });
-      setForm({ email: "", first_name: "", last_name: "", mobile: "" });
+      setForm(emptyForm);
       await reload();
       setNotice({ success: true, message: "Kontak ditambahkan." });
     } catch (e) {
@@ -598,49 +606,104 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       setBusy(false);
     }
   };
-  const importCsv = async (file: File) => {
+
+  const normalizeHeader = (value: unknown) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+
+  const parseCsv = (text: string) => {
+    const separator = (text.split(/\r?\n/, 1)[0]?.match(/;/g)?.length ?? 0) >
+      (text.split(/\r?\n/, 1)[0]?.match(/,/g)?.length ?? 0)
+      ? ";"
+      : ",";
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = "";
+    let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        if (quoted && text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else quoted = !quoted;
+      } else if (char === separator && !quoted) {
+        row.push(cell.trim());
+        cell = "";
+      } else if ((char === "\n" || char === "\r") && !quoted) {
+        if (char === "\r" && text[i + 1] === "\n") i++;
+        row.push(cell.trim());
+        if (row.some(Boolean)) rows.push(row);
+        row = [];
+        cell = "";
+      } else cell += char;
+    }
+    row.push(cell.trim());
+    if (row.some(Boolean)) rows.push(row);
+    return rows;
+  };
+
+  const importContacts = async (file: File) => {
     setBusy(true);
     try {
-      const text = await file.text(),
-        lines = text.split(/\r?\n/).filter(Boolean),
-        cols = (lines[0] ?? "").split(",").map((x) => x.trim().toLowerCase()),
-        rows = lines
-          .slice(1)
-          .map((line) => {
-            const v = line.split(",").map((x) => x.trim());
-            const obj: any = {
-              created_by: userId,
-              source: "csv",
-              custom_fields: {},
-            };
-            cols.forEach((c, i) => {
-              if (
-                [
-                  "email",
-                  "first_name",
-                  "last_name",
-                  "mobile",
-                  "city",
-                  "country",
-                  "company",
-                ].includes(c)
-              )
-                obj[c] = v[i];
-              else obj.custom_fields[c] = v[i];
-            });
-            return obj;
-          })
-          .filter((x) => x.email);
-      for (let i = 0; i < rows.length; i += 250)
+      let sheet: unknown[][];
+      if (file.name.toLowerCase().endsWith(".xlsx")) {
+        const { default: readXlsxFile } = await import("read-excel-file/browser");
+        sheet = (await readXlsxFile(file)) as unknown[][];
+      } else {
+        sheet = parseCsv(await file.text());
+      }
+
+      const headers = (sheet[0] ?? []).map(normalizeHeader);
+      const aliases: Record<string, string> = {
+        kode: "registration_code",
+        "kode pendaftaran": "registration_code",
+        nama: "full_name",
+        "daftar nama": "full_name",
+        email: "email",
+        whatsapp: "mobile",
+        "no whatsapp": "mobile",
+        wa: "mobile",
+      };
+      const required = ["kode", "daftar nama", "email", "whatsapp"];
+      const missing = required.filter((name) => !headers.includes(name));
+      if (missing.length) {
+        throw new Error(
+          `Header Excel belum sesuai. Gunakan: Kode | Daftar Nama | Email | WhatsApp. Kolom tidak ditemukan: ${missing.join(", ")}.`,
+        );
+      }
+
+      const rows = sheet
+        .slice(1)
+        .map((values) => {
+          const contact: Record<string, unknown> = {
+            created_by: userId,
+            source: file.name.toLowerCase().endsWith(".xlsx") ? "excel" : "csv",
+          };
+          headers.forEach((header, index) => {
+            const field = aliases[header];
+            if (field) contact[field] = String(values[index] ?? "").trim();
+          });
+          contact.first_name = contact.full_name;
+          return contact;
+        })
+        .filter((contact) => contact.email);
+
+      if (!rows.length) throw new Error("Tidak ada baris kontak dengan email yang valid.");
+      for (let i = 0; i < rows.length; i += 250) {
         await api("/rest/v1/contacts?on_conflict=email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify(rows.slice(i, i + 250)),
         });
+      }
       await reload();
       setNotice({
         success: true,
-        message: `${rows.length} baris CSV diproses.`,
+        message: `${rows.length} kontak dari ${file.name} berhasil diproses.`,
       });
     } catch (e) {
       setNotice({
@@ -651,6 +714,17 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       setBusy(false);
     }
   };
+
+  const downloadTemplate = () => {
+    const csv = "\uFEFFKode,Daftar Nama,Email,WhatsApp\nHXP-001,Nama Lengkap,nama@email.com,081234567890\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "template-kontak-safar-mail.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <div>
@@ -662,40 +736,46 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       <Card>
         <CardContent className="grid gap-3 p-5 sm:grid-cols-5">
           <Input
+            placeholder="Kode Pendaftaran"
+            value={form.registration_code}
+            onChange={(e) =>
+              setForm({ ...form, registration_code: e.target.value })
+            }
+          />
+          <Input
+            placeholder="Daftar Nama"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+          />
+          <Input
+            type="email"
             placeholder="Email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           <Input
-            placeholder="Nama depan"
-            value={form.first_name}
-            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-          />
-          <Input
-            placeholder="Nama belakang"
-            value={form.last_name}
-            onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-          />
-          <Input
-            placeholder="No. HP"
+            placeholder="WhatsApp"
             value={form.mobile}
             onChange={(e) => setForm({ ...form, mobile: e.target.value })}
           />
           <Button onClick={save} disabled={busy || !form.email}>
             Tambah
           </Button>
-          <label className="sm:col-span-5 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
-            <Upload size={18} /> Import CSV — header: email, first_name,
-            last_name, mobile, dan kolom khusus
+          <label className="sm:col-span-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
+            <Upload size={18} /> Import Excel/CSV: Kode | Daftar Nama | Email |
+            WhatsApp
             <input
               hidden
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               onChange={(e) =>
-                e.target.files?.[0] && importCsv(e.target.files[0])
+                e.target.files?.[0] && importContacts(e.target.files[0])
               }
             />
           </label>
+          <Button type="button" variant="outline" onClick={downloadTemplate}>
+            <FileSpreadsheet size={18} /> Unduh Contoh
+          </Button>
         </CardContent>
       </Card>
       <Card>
@@ -703,19 +783,22 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50 text-left">
+                <Th>Kode</Th>
+                <Th>Daftar Nama</Th>
                 <Th>Email</Th>
-                <Th>Nama</Th>
-                <Th>Nomor HP</Th>
+                <Th>WhatsApp</Th>
               </tr>
             </thead>
             <tbody>
               {contacts.map((c: Contact) => (
                 <tr key={c.id} className="border-b">
-                  <Td>{c.email}</Td>
+                  <Td>{c.registration_code || "—"}</Td>
                   <Td>
-                    {[c.first_name, c.last_name].filter(Boolean).join(" ") ||
+                    {c.full_name ||
+                      [c.first_name, c.last_name].filter(Boolean).join(" ") ||
                       "—"}
                   </Td>
+                  <Td>{c.email}</Td>
                   <Td>{c.mobile || "—"}</Td>
                 </tr>
               ))}
@@ -750,7 +833,14 @@ function Templates({
     ),
   ) as string[];
   const keywords = [
+    "kode_pendaftaran",
+    "kode",
+    "registration_code",
+    "daftar_nama",
+    "nama",
+    "full_name",
     "email",
+    "whatsapp",
     "first_name",
     "last_name",
     "mobile",
@@ -962,7 +1052,20 @@ function Compose({
         email: c.email,
         variables: {
           email: c.email,
-          first_name: c.first_name ?? "",
+          registration_code: c.registration_code ?? "",
+          kode_pendaftaran: c.registration_code ?? "",
+          kode: c.registration_code ?? "",
+          full_name:
+            c.full_name ??
+            [c.first_name, c.last_name].filter(Boolean).join(" "),
+          nama:
+            c.full_name ??
+            [c.first_name, c.last_name].filter(Boolean).join(" "),
+          daftar_nama:
+            c.full_name ??
+            [c.first_name, c.last_name].filter(Boolean).join(" "),
+          whatsapp: c.mobile ?? "",
+          first_name: c.first_name ?? c.full_name ?? "",
           last_name: c.last_name ?? "",
           mobile: c.mobile ?? "",
           ...(c.custom_fields ?? {}),
