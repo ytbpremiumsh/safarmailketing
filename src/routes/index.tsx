@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -364,6 +364,8 @@ function Dashboard({
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
     [provider, setProvider] = useState<any>(null),
+    [providerUpdatedAt, setProviderUpdatedAt] = useState<Date | null>(null),
+    [providerRefreshing, setProviderRefreshing] = useState(false),
     [profileLoaded, setProfileLoaded] = useState(false),
     [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const load = async () => {
@@ -431,8 +433,12 @@ function Dashboard({
       method: "POST",
       body: JSON.stringify(body),
     });
-  const sync = async () => {
-    setLoading(true);
+  const syncInFlight = useRef(false);
+  const sync = async (options: { silent?: boolean } = {}) => {
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
+    if (!options.silent) setLoading(true);
+    setProviderRefreshing(true);
     try {
       const d = await invoke({ action: "sync" });
       if (d.code === "ACCOUNT_INACTIVE") {
@@ -441,23 +447,46 @@ function Dashboard({
           current ? { ...current, active: false } : current,
         );
         setProfileLoaded(true);
-        setNotice({
-          success: false,
-          message: "Akun Anda belum aktif. Hubungi admin untuk mengaktifkannya.",
-        });
+        if (!options.silent) {
+          setNotice({
+            success: false,
+            message: "Akun Anda belum aktif. Hubungi admin untuk mengaktifkannya.",
+          });
+        }
         return;
       }
       setProvider(d);
-      setNotice({ success: d.success, message: d.message });
+      setProviderUpdatedAt(new Date());
+      if (!options.silent) {
+        setNotice({ success: d.success, message: d.message });
+      }
     } catch (e) {
-      setNotice({
-        success: false,
-        message: e instanceof Error ? e.message : "Koneksi gagal.",
-      });
+      if (!options.silent) {
+        setNotice({
+          success: false,
+          message: e instanceof Error ? e.message : "Koneksi gagal.",
+        });
+      }
     } finally {
-      setLoading(false);
+      syncInFlight.current = false;
+      setProviderRefreshing(false);
+      if (!options.silent) setLoading(false);
     }
   };
+  useEffect(() => {
+    const refreshCredits = () => {
+      if (document.visibilityState === "visible") sync({ silent: true });
+    };
+    refreshCredits();
+    const interval = window.setInterval(refreshCredits, 10000);
+    window.addEventListener("focus", refreshCredits);
+    document.addEventListener("visibilitychange", refreshCredits);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshCredits);
+      document.removeEventListener("visibilitychange", refreshCredits);
+    };
+  }, [token]);
   const totalRecipients = campaigns.reduce((n, c) => n + c.total_count, 0);
   const sentCount = campaigns.reduce((n, c) => n + c.sent_count, 0);
   const failedCount = campaigns.reduce((n, c) => n + c.failed_count, 0);
@@ -522,6 +551,8 @@ function Dashboard({
           provider={provider}
           sync={sync}
           loading={loading}
+          providerRefreshing={providerRefreshing}
+          providerUpdatedAt={providerUpdatedAt}
         />
       )}
       {view === "contacts" && (
@@ -686,16 +717,28 @@ function Overview({
   provider,
   sync,
   loading,
+  providerRefreshing,
+  providerUpdatedAt,
 }: any) {
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat
-          label="Kredit Mailketing"
-          value={provider?.credits?.data?.credits ?? "—"}
-          icon={<Mail />}
-        />
+        <div className="relative">
+          <Stat
+            label="Kredit Mailketing"
+            value={provider?.credits?.data?.credits ?? "—"}
+            icon={<Mail />}
+          />
+          <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className={`size-1.5 rounded-full ${providerRefreshing ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`} />
+            {providerRefreshing
+              ? "Memperbarui..."
+              : providerUpdatedAt
+                ? `Diperbarui ${providerUpdatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                : "Menghubungkan..."}
+          </div>
+        </div>
         <Stat label="Total kontak" value={contacts} icon={<Users />} />
         <Stat label="Total penerima" value={stats.total} icon={<Send />} />
         <Stat label="Berhasil terkirim" value={stats.sent} icon={<CheckCircle2 />} />
@@ -756,8 +799,8 @@ function Overview({
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Kampanye Terbaru</CardTitle>
-          <Button variant="outline" onClick={sync} disabled={loading}>
-            <RefreshCw className={loading ? "animate-spin" : ""} /> Sinkronkan
+          <Button variant="outline" onClick={() => sync()} disabled={loading || providerRefreshing}>
+            <RefreshCw className={loading || providerRefreshing ? "animate-spin" : ""} /> Perbarui sekarang
           </Button>
         </CardHeader>
         <CardContent>
@@ -2330,6 +2373,7 @@ function Compose({
         }
         await reload();
       }
+      if (d.success) await sync({ silent: true });
       setNotice({ success: d.success, message: d.message });
     } catch (e) {
       setNotice({
