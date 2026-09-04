@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Send,
   Settings,
+  Trash2,
   ShieldCheck,
   Upload,
   Users,
@@ -623,7 +624,12 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   const [form, setForm] = useState(emptyForm);
   const [importCategory, setImportCategory] = useState("Umum");
   const [bulkText, setBulkText] = useState("");
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [deleteCategory, setDeleteCategory] = useState("");
   const [busy, setBusy] = useState(false);
+  const contactCategories = Array.from(
+    new Set(contacts.map((contact: Contact) => contact.category || "Umum")),
+  ).sort() as string[];
 
   const save = async () => {
     setBusy(true);
@@ -658,10 +664,13 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       .replace(/\s+/g, " ");
 
   const parseCsv = (text: string) => {
-    const separator = (text.split(/\r?\n/, 1)[0]?.match(/;/g)?.length ?? 0) >
-      (text.split(/\r?\n/, 1)[0]?.match(/,/g)?.length ?? 0)
-      ? ";"
-      : ",";
+    const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+    const separators = [",", ";", "\t"] as const;
+    const separator = separators.reduce((best, candidate) =>
+      firstLine.split(candidate).length > firstLine.split(best).length
+        ? candidate
+        : best,
+    );
     const rows: string[][] = [];
     let row: string[] = [];
     let cell = "";
@@ -853,15 +862,17 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       const seen = new Set<string>();
       const rows = dataRows
         .map((values, index) => {
-          const [registrationCode, fullName, emailValue, mobile] = values;
-          const email = String(emailValue ?? "").trim().toLowerCase();
           const lineNumber = index + (firstIsHeader ? 2 : 1);
+          const registrationCode = String(values[0] ?? "").trim();
+          const mobile = String(values.at(-1) ?? "").trim();
+          const email = String(values.at(-2) ?? "").trim().toLowerCase();
+          const fullName = values.slice(1, -2).join(", ").trim();
           if (
             values.length < 4 ||
-            !registrationCode?.trim() ||
-            !fullName?.trim() ||
+            !registrationCode ||
+            !fullName ||
             !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-            !mobile?.trim()
+            !mobile
           ) {
             invalidLines.push(lineNumber);
             return null;
@@ -869,43 +880,92 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           if (seen.has(email)) return null;
           seen.add(email);
           return {
-            registration_code: registrationCode.trim(),
-            full_name: fullName.trim(),
-            first_name: fullName.trim(),
+            registration_code: registrationCode,
+            full_name: fullName,
+            first_name: fullName,
             email,
-            mobile: mobile.trim(),
+            mobile,
             category: importCategory.trim() || "Umum",
             source: "bulk",
             created_by: userId,
           };
         })
-        .filter(Boolean);
+        .filter((row): row is NonNullable<typeof row> => row !== null);
 
-      if (invalidLines.length) {
+      if (!rows.length)
         throw new Error(
-          `Periksa baris ${invalidLines.slice(0, 10).join(", ")}. Format wajib: Kode,Nama,Email,WhatsApp.`,
+          invalidLines.length
+            ? `Tidak ada data valid. Periksa baris ${invalidLines.slice(0, 10).join(", ")}.`
+            : "Belum ada kontak valid untuk disimpan.",
         );
-      }
-      if (!rows.length) throw new Error("Belum ada kontak valid untuk disimpan.");
 
-      for (let i = 0; i < rows.length; i += 250) {
+      const batchSize = 200;
+      for (let i = 0; i < rows.length; i += batchSize)
         await api("/rest/v1/contacts?on_conflict=email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify(rows.slice(i, i + 250)),
+          body: JSON.stringify(rows.slice(i, i + batchSize)),
         });
-      }
       setBulkText("");
       await reload();
       setNotice({
         success: true,
-        message: `${rows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
+        message: invalidLines.length
+          ? `${rows.length} kontak disimpan. ${invalidLines.length} baris dilewati: ${invalidLines.slice(0, 10).join(", ")}${invalidLines.length > 10 ? " dan lainnya" : ""}.`
+          : `${rows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
       });
     } catch (e) {
-      setNotice({
-        success: false,
-        message: e instanceof Error ? e.message : "Input massal gagal.",
-      });
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Input massal gagal." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteContacts = async (ids: string[]) => {
+    if (
+      !ids.length ||
+      !window.confirm(`Hapus ${ids.length} kontak yang dipilih? Tindakan ini tidak dapat dibatalkan.`)
+    ) return;
+    setBusy(true);
+    try {
+      for (let i = 0; i < ids.length; i += 100)
+        await api(
+          `/rest/v1/contacts?id=in.(${ids.slice(i, i + 100).join(",")})`,
+          token,
+          { method: "DELETE", headers: { Prefer: "return=minimal" } },
+        );
+      setSelectedContactIds([]);
+      await reload();
+      setNotice({ success: true, message: `${ids.length} kontak berhasil dihapus.` });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Kontak gagal dihapus." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteWholeCategory = async () => {
+    if (!deleteCategory) return;
+    const count = contacts.filter(
+      (contact: Contact) => (contact.category || "Umum") === deleteCategory,
+    ).length;
+    if (!window.confirm(
+      `Hapus kategori “${deleteCategory}” beserta ${count} kontak di dalamnya? Tindakan ini tidak dapat dibatalkan.`,
+    )) return;
+    setBusy(true);
+    try {
+      const removedCategory = deleteCategory;
+      await api(
+        `/rest/v1/contacts?category=eq.${encodeURIComponent(removedCategory)}`,
+        token,
+        { method: "DELETE", headers: { Prefer: "return=minimal" } },
+      );
+      setDeleteCategory("");
+      setSelectedContactIds([]);
+      await reload();
+      setNotice({ success: true, message: `Kategori “${removedCategory}” dan seluruh kontaknya berhasil dihapus.` });
+    } catch (e) {
+      setNotice({ success: false, message: e instanceof Error ? e.message : "Kategori gagal dihapus." });
     } finally {
       setBusy(false);
     }
@@ -1015,20 +1075,97 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           </div>
         </CardContent>
       </Card>     <Card>
+        <CardHeader>
+          <CardTitle>Kelola dan Hapus Kontak</CardTitle>
+          <p className="text-sm text-slate-500">
+            Pilih kontak dari tabel untuk menghapus beberapa data sekaligus,
+            atau hapus seluruh kontak berdasarkan kategori.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm shadow-sm"
+            value={deleteCategory}
+            onChange={(e) => setDeleteCategory(e.target.value)}
+          >
+            <option value="">Pilih kategori yang akan dihapus</option>
+            {contactCategories.map((category) => (
+              <option key={category} value={category}>
+                {category} ({contacts.filter((contact: Contact) => (contact.category || "Umum") === category).length} kontak)
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="destructive" disabled={busy || !deleteCategory} onClick={deleteWholeCategory}>
+            <Trash2 /> Hapus Kategori & Kontak
+          </Button>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!contacts.length}
+              onClick={() =>
+                setSelectedContactIds(
+                  selectedContactIds.length === contacts.length
+                    ? []
+                    : contacts.map((contact: Contact) => contact.id),
+                )
+              }
+            >
+              {selectedContactIds.length === contacts.length && contacts.length
+                ? "Batalkan Semua"
+                : "Pilih Semua Kontak"}
+            </Button>
+            <Button type="button" variant="destructive" disabled={busy || !selectedContactIds.length} onClick={() => deleteContacts(selectedContactIds)}>
+              <Trash2 /> Hapus Terpilih ({selectedContactIds.length})
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
         <CardContent className="overflow-x-auto p-0">
-          <table className="min-w-[680px] w-full text-sm">
+          <table className="min-w-[860px] w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50 text-left">
+                <Th>
+                  <input
+                    type="checkbox"
+                    aria-label="Pilih semua kontak"
+                    checked={contacts.length > 0 && selectedContactIds.length === contacts.length}
+                    onChange={(e) =>
+                      setSelectedContactIds(
+                        e.target.checked ? contacts.map((contact: Contact) => contact.id) : [],
+                      )
+                    }
+                  />
+                </Th>
                 <Th>Kode</Th>
                 <Th>Daftar Nama</Th>
                 <Th>Email</Th>
                 <Th>WhatsApp</Th>
                 <Th>Kategori</Th>
+                <Th>Aksi</Th>
               </tr>
             </thead>
             <tbody>
               {contacts.map((c: Contact) => (
-                <tr key={c.id} className="border-b">
+                <tr
+                  key={c.id}
+                  className={`border-b transition-colors ${selectedContactIds.includes(c.id) ? "bg-emerald-50/70" : "hover:bg-slate-50"}`}
+                >
+                  <Td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Pilih ${c.email}`}
+                      checked={selectedContactIds.includes(c.id)}
+                      onChange={(e) =>
+                        setSelectedContactIds(
+                          e.target.checked
+                            ? [...selectedContactIds, c.id]
+                            : selectedContactIds.filter((id) => id !== c.id),
+                        )
+                      }
+                    />
+                  </Td>
                   <Td>{c.registration_code || "—"}</Td>
                   <Td>
                     {c.full_name ||
@@ -1041,6 +1178,11 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                     <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
                       {c.category || "Umum"}
                     </span>
+                  </Td>
+                  <Td>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
+                      <Trash2 /> Hapus
+                    </Button>
                   </Td>
                 </tr>
               ))}
