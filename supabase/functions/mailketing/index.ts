@@ -73,6 +73,25 @@ const requestMailketing = async (token: string, path: string, body?: unknown, co
   return { ...payload, http_status: response.status };
 };
 
+const extractCreditBalance = (payload: any): number | null => {
+  const candidates = [
+    payload?.data?.credits,
+    payload?.data?.credit,
+    payload?.credits,
+    payload?.credit,
+    payload?.saldo,
+    payload?.data?.saldo,
+  ];
+  const raw = candidates.find(
+    (value) => value !== undefined && value !== null && value !== "",
+  );
+  if (raw === undefined) return null;
+  const normalized =
+    typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -199,7 +218,18 @@ export default {
         const [credits, senders, lists] = await Promise.all([
           provider("/credits"), provider("/senders"), provider("/lists"),
         ]);
-        return json({ success: credits.success, credits, senders, lists, message: credits.message });
+        const creditBalance = extractCreditBalance(credits);
+        return json({
+          success: credits.success !== false && creditBalance !== null,
+          credit_balance: creditBalance,
+          credits,
+          senders,
+          lists,
+          message:
+            creditBalance !== null
+              ? "Kredit Mailketing berhasil diperbarui."
+              : credits.message || "Saldo kredit tidak ditemukan pada respons Mailketing.",
+        });
       }
       if (action === "add-subscriber") {
         return json(await provider("/subscribers", input.subscriber));
