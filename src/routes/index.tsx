@@ -646,16 +646,88 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     return rows;
   };
 
+  const readXlsx = async (file: File): Promise<unknown[][]> => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    let eocd = bytes.length - 22;
+    while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd--;
+    if (eocd < 0) throw new Error("File Excel tidak valid.");
+
+    const entries = new Map<string, Uint8Array>();
+    const total = view.getUint16(eocd + 10, true);
+    let pointer = view.getUint32(eocd + 16, true);
+    const decoder = new TextDecoder();
+    for (let index = 0; index < total; index++) {
+      if (view.getUint32(pointer, true) !== 0x02014b50) break;
+      const method = view.getUint16(pointer + 10, true);
+      const compressedSize = view.getUint32(pointer + 20, true);
+      const nameLength = view.getUint16(pointer + 28, true);
+      const extraLength = view.getUint16(pointer + 30, true);
+      const commentLength = view.getUint16(pointer + 32, true);
+      const localOffset = view.getUint32(pointer + 42, true);
+      const name = decoder.decode(
+        bytes.slice(pointer + 46, pointer + 46 + nameLength),
+      );
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+      let content: Uint8Array;
+      if (method === 0) content = compressed;
+      else if (method === 8) {
+        const stream = new Blob([compressed]).stream().pipeThrough(
+          new DecompressionStream("deflate-raw"),
+        );
+        content = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else throw new Error("Format kompresi Excel tidak didukung.");
+      entries.set(name, content);
+      pointer += 46 + nameLength + extraLength + commentLength;
+    }
+
+    const parseXml = (path: string) => {
+      const content = entries.get(path);
+      if (!content) return null;
+      return new DOMParser().parseFromString(decoder.decode(content), "text/xml");
+    };
+    const sharedXml = parseXml("xl/sharedStrings.xml");
+    const shared = sharedXml
+      ? Array.from(sharedXml.getElementsByTagName("si")).map(
+          (node) => node.textContent ?? "",
+        )
+      : [];
+    const sheetPath = Array.from(entries.keys())
+      .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+      .sort()[0];
+    if (!sheetPath) throw new Error("Sheet Excel tidak ditemukan.");
+    const xml = parseXml(sheetPath);
+    if (!xml) throw new Error("Sheet Excel tidak dapat dibaca.");
+
+    return Array.from(xml.getElementsByTagName("row")).map((row) => {
+      const values: unknown[] = [];
+      Array.from(row.getElementsByTagName("c")).forEach((cell) => {
+        const reference = cell.getAttribute("r") ?? "";
+        const letters = reference.match(/[A-Z]+/)?.[0] ?? "A";
+        let column = 0;
+        for (const letter of letters)
+          column = column * 26 + letter.charCodeAt(0) - 64;
+        column--;
+        const type = cell.getAttribute("t");
+        const raw =
+          cell.getElementsByTagName("v")[0]?.textContent ??
+          cell.getElementsByTagName("t")[0]?.textContent ??
+          "";
+        values[column] = type === "s" ? shared[Number(raw)] ?? "" : raw;
+      });
+      return values;
+    });
+  };
+
   const importContacts = async (file: File) => {
     setBusy(true);
     try {
-      let sheet: unknown[][];
-      if (file.name.toLowerCase().endsWith(".xlsx")) {
-        const { default: readXlsxFile } = await import("read-excel-file/browser");
-        sheet = (await readXlsxFile(file)) as unknown[][];
-      } else {
-        sheet = parseCsv(await file.text());
-      }
+      const sheet = file.name.toLowerCase().endsWith(".xlsx")
+        ? await readXlsx(file)
+        : parseCsv(await file.text());
 
       const headers = (sheet[0] ?? []).map(normalizeHeader);
       const aliases: Record<string, string> = {
