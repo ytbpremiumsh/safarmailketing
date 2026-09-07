@@ -119,6 +119,41 @@ const requestMailketingV1Send = async (
   };
 };
 
+const requestMailketingV1Credits = async (token: string) => {
+  const form = new URLSearchParams({ api_token: token });
+  const response = await fetch("https://api.mailketing.co.id/api/v1/ceksaldo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      "Accept": "application/json,text/plain,*/*",
+    },
+    body: form.toString(),
+  });
+  const raw = await response.text();
+  let data: any = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { message: raw };
+  }
+  const status = String(data.status ?? data.success ?? "").toLowerCase();
+  const balance = extractCreditBalance(data);
+  const success =
+    response.ok &&
+    balance !== null &&
+    (data.success === true || ["success", "true", "1"].includes(status));
+  return {
+    ...data,
+    success,
+    message: String(
+      data.message ??
+        (success ? "Kredit Mailketing berhasil diperbarui." : `HTTP ${response.status}`),
+    ),
+    http_status: response.status,
+    transport: "mailketing-v1",
+  };
+};
+
 const extractCreditBalance = (payload: any): number | null => {
   const candidates = [
     payload?.data?.credits,
@@ -202,7 +237,11 @@ export default {
         const { data: storedToken } = await admin.rpc("read_mailketing_token");
         const token = submittedToken || normalizeToken(storedToken);
         if (token.length < 8) return json({ success: false, message: "Token Mailketing wajib diisi." }, 422);
-        const validation = await requestMailketing(token, "/credits");
+        const officialValidation = await requestMailketingV1Credits(token);
+        const validation =
+          officialValidation.success
+            ? officialValidation
+            : await requestMailketing(token, "/credits");
         if (!validation.success) {
           return json({
             success: false,
@@ -296,7 +335,8 @@ export default {
       };
 
       if (action === "sync") {
-        const [credits, senders, lists, settingsResult] = await Promise.all([
+        const [officialCredits, stackCredits, senders, lists, settingsResult] = await Promise.all([
+          requestMailketingV1Credits(normalizeToken(token)),
           provider("/credits"),
           provider("/senders"),
           provider("/lists"),
@@ -305,7 +345,10 @@ export default {
             .eq("id", true)
             .maybeSingle(),
         ]);
-        const creditBalance = extractCreditBalance(credits);
+        const officialBalance = extractCreditBalance(officialCredits);
+        const stackBalance = extractCreditBalance(stackCredits);
+        const credits = officialBalance !== null ? officialCredits : stackCredits;
+        const creditBalance = officialBalance ?? stackBalance;
         const defaultSender = String(
           settingsResult.data?.default_from_email ?? "",
         ).trim().toLowerCase();
@@ -321,6 +364,7 @@ export default {
           credits,
           senders,
           verified_senders: verifiedSenders,
+          active_sender: defaultSender || verifiedSenders[0] || null,
           lists,
           message:
             creditBalance !== null
@@ -362,7 +406,11 @@ export default {
         ]);
         const recipients = requested.filter((item: any) => !blocked.has(String(item.email).trim().toLowerCase()));
         if (!recipients.length) return json({ success: false, message: "Semua penerima berada di daftar unsubscribe/blacklist." }, 422);
-        const creditCheck = await provider("/credits");
+        const officialCreditCheck = await requestMailketingV1Credits(normalizeToken(token));
+        const creditCheck =
+          extractCreditBalance(officialCreditCheck) !== null
+            ? officialCreditCheck
+            : await provider("/credits");
         const credits = extractCreditBalance(creditCheck) ?? 0;
         if (creditCheck.success !== false && recipients.length > credits) {
           return json({ success: false, code: "INSUFFICIENT_CREDITS", message: `Kredit tidak cukup. Dibutuhkan ${recipients.length}, tersedia ${credits}.` }, 422);
