@@ -57,6 +57,31 @@ const getCreditBalance = (provider: any): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+const getVerifiedSenders = (provider: any): string[] => {
+  const preferred = provider?.verified_senders;
+  const source =
+    Array.isArray(preferred) && preferred.length
+      ? preferred
+      : provider?.senders;
+  const emails = new Set<string>();
+  const visit = (value: any, depth = 0) => {
+    if (depth > 6 || value === null || value === undefined) return;
+    if (typeof value === "string") {
+      const email = value.trim().toLowerCase();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) emails.add(email);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value === "object")
+      Object.values(value).forEach((item) => visit(item, depth + 1));
+  };
+  visit(source);
+  return Array.from(emails);
+};
+
 type Notice = { success: boolean; message: string };
 type Session = {
   access_token: string;
@@ -2229,33 +2254,8 @@ function Compose({
   const [idempotencyKey, setIdempotencyKey] = useState(
     createIdempotencyKey,
   );
-  const senderPayload =
-    provider?.verified_senders?.length
-      ? provider.verified_senders
-      : provider?.senders?.data?.senders ??
-        provider?.senders?.data ??
-        provider?.senders ??
-        [];
-  const senderRows = Array.isArray(senderPayload)
-    ? senderPayload
-    : senderPayload
-      ? [senderPayload]
-      : [];
-  const senders = Array.from(
-    new Set(
-      senderRows
-        .map((sender: any) =>
-          typeof sender === "string"
-            ? sender
-            : sender?.sender_email ??
-              sender?.from_email ??
-              sender?.email ??
-              sender?.address,
-        )
-        .filter(Boolean)
-        .map((email: string) => String(email).trim().toLowerCase()),
-    ),
-  ) as string[];
+  const senders = getVerifiedSenders(provider);
+  const activeSender = String(provider?.active_sender ?? "").trim().toLowerCase();
   const categories = Array.from(
     new Set(
       contacts.map((contact: Contact) => contact.category || "Umum"),
@@ -2280,9 +2280,17 @@ function Compose({
     refreshSenders();
   }, []);
   useEffect(() => {
-    if (!f.from_email && senders[0])
-      setF((current) => ({ ...current, from_email: senders[0] }));
-  }, [senders.join("|")]);
+    const preferred =
+      activeSender && senders.includes(activeSender)
+        ? activeSender
+        : senders[0];
+    if (
+      preferred &&
+      (!f.from_email || !senders.includes(f.from_email))
+    ) {
+      setF((current) => ({ ...current, from_email: preferred }));
+    }
+  }, [senders.join("|"), activeSender]);
   const recipients = useMemo(() => {
     const picked = contacts
       .filter(
@@ -3079,6 +3087,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     [settingsLoaded, setSettingsLoaded] = useState(false),
     [settingsUpdatedAt, setSettingsUpdatedAt] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
+    [syncingSenders, setSyncingSenders] = useState(false),
     [staff, setStaff] = useState<any[]>([]),
     [audits, setAudits] = useState<any[]>([]),
     [newUser, setNewUser] = useState({
@@ -3120,9 +3129,19 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setSettingsLoaded(true);
     }
   };
+  const senders = getVerifiedSenders(provider);
+  const refreshProvider = async () => {
+    setSyncingSenders(true);
+    try {
+      await sync({ silent: true });
+    } finally {
+      setSyncingSenders(false);
+    }
+  };
   useEffect(() => {
     loadAdministration();
     loadSettings();
+    if (admin) refreshProvider();
   }, [admin]);
 
   const createStaff = async () => {
@@ -3256,11 +3275,50 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                 onChange={(e) => setFromName(e.target.value)}
               />
             </Field>
-            <Field label="Email pengirim default">
-              <Input
-                value={fromEmail}
-                onChange={(e) => setFromEmail(e.target.value)}
-              />
+            <Field label="Sender aktif">
+              <div className="flex gap-2">
+                <select
+                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                  value={fromEmail}
+                  onChange={(e) => setFromEmail(e.target.value)}
+                  disabled={!admin || syncingSenders}
+                >
+                  <option value="">
+                    {syncingSenders
+                      ? "Memuat sender..."
+                      : senders.length
+                        ? "Pilih sender aktif"
+                        : "Sender belum ditemukan"}
+                  </option>
+                  {fromEmail && !senders.includes(fromEmail.toLowerCase()) && (
+                    <option value={fromEmail}>
+                      {fromEmail} (tersimpan)
+                    </option>
+                  )}
+                  {senders.map((email) => (
+                    <option key={email} value={email}>
+                      {email}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={refreshProvider}
+                  disabled={syncingSenders}
+                  title="Sinkronkan sender Mailketing"
+                  aria-label="Sinkronkan sender Mailketing"
+                >
+                  <RefreshCw
+                    size={16}
+                    className={syncingSenders ? "animate-spin" : ""}
+                  />
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Sender yang dipilih otomatis menjadi pilihan utama di Kampanye.
+              </p>
             </Field>
           </div>
           <label className="flex items-center gap-2 text-sm">
