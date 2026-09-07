@@ -3277,30 +3277,25 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             </Field>
             <Field label="Sender aktif">
               <div className="flex gap-2">
-                <select
-                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
-                  value={fromEmail}
-                  onChange={(e) => setFromEmail(e.target.value)}
-                  disabled={!admin || syncingSenders}
-                >
-                  <option value="">
-                    {syncingSenders
-                      ? "Memuat sender..."
-                      : senders.length
-                        ? "Pilih sender aktif"
-                        : "Sender belum ditemukan"}
-                  </option>
-                  {fromEmail && !senders.includes(fromEmail.toLowerCase()) && (
-                    <option value={fromEmail}>
-                      {fromEmail} (tersimpan)
-                    </option>
-                  )}
-                  {senders.map((email) => (
-                    <option key={email} value={email}>
-                      {email}
-                    </option>
-                  ))}
-                </select>
+                <div className="min-w-0 flex-1">
+                  <Input
+                    type="email"
+                    list="mailketing-senders"
+                    value={fromEmail}
+                    onChange={(e) => setFromEmail(e.target.value)}
+                    disabled={!admin || syncingSenders}
+                    placeholder={
+                      syncingSenders
+                        ? "Memuat sender..."
+                        : "Pilih atau ketik sender terverifikasi"
+                    }
+                  />
+                  <datalist id="mailketing-senders">
+                    {senders.map((email) => (
+                      <option key={email} value={email} />
+                    ))}
+                  </datalist>
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -3317,7 +3312,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                 </Button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Sender yang dipilih otomatis menjadi pilihan utama di Kampanye.
+                Pilih dari daftar atau ketik alamat sender yang sudah terverifikasi di Mailketing. Sender ini otomatis menjadi pilihan utama di Kampanye.
               </p>
             </Field>
           </div>
