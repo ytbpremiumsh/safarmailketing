@@ -152,12 +152,7 @@ const extractVerifiedSenders = (payload: any): string[] => {
       return;
     }
     if (typeof value !== "object") return;
-    [value.sender_email, value.from_email, value.email, value.address].forEach(
-      (item) => visit(item, depth + 1),
-    );
-    [value.data, value.senders, value.sender, value.items, value.results].forEach(
-      (item) => visit(item, depth + 1),
-    );
+    Object.values(value).forEach((item) => visit(item, depth + 1));
   };
   visit(payload);
   return Array.from(emails);
