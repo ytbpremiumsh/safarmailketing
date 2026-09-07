@@ -2220,6 +2220,7 @@ function Compose({
     [manual, setManual] = useState(""),
     [categoryFilter, setCategoryFilter] = useState("all"),
     [busy, setBusy] = useState(false),
+    [syncingSenders, setSyncingSenders] = useState(false),
     [preview, setPreview] = useState(false);
   const createIdempotencyKey = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -2267,8 +2268,16 @@ function Compose({
           (contact: Contact) =>
             (contact.category || "Umum") === categoryFilter,
         );
+  const refreshSenders = async () => {
+    setSyncingSenders(true);
+    try {
+      await sync({ silent: true });
+    } finally {
+      setSyncingSenders(false);
+    }
+  };
   useEffect(() => {
-    if (!provider) sync();
+    refreshSenders();
   }, []);
   useEffect(() => {
     if (!f.from_email && senders[0])
@@ -2426,18 +2435,45 @@ function Compose({
               />
             </Field>
             <Field label="Sender terverifikasi">
-              <select
-                className="h-9 w-full rounded-md border bg-white px-3 text-sm"
-                value={f.from_email}
-                onChange={(e) => setF({ ...f, from_email: e.target.value })}
-              >
-                <option value="">Pilih sender</option>
-                {senders.map((email: string) => (
-                  <option key={email} value={email}>
-                    {email}
+              <div className="flex gap-2">
+                <select
+                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                  value={f.from_email}
+                  onChange={(e) => setF({ ...f, from_email: e.target.value })}
+                >
+                  <option value="">
+                    {syncingSenders
+                      ? "Memuat sender..."
+                      : senders.length
+                        ? "Pilih sender"
+                        : "Sender belum ditemukan"}
                   </option>
-                ))}
-              </select>
+                  {senders.map((email: string) => (
+                    <option key={email} value={email}>
+                      {email}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={refreshSenders}
+                  disabled={syncingSenders}
+                  title="Sinkronkan sender dari Mailketing"
+                  aria-label="Sinkronkan sender"
+                >
+                  <RefreshCw
+                    size={16}
+                    className={syncingSenders ? "animate-spin" : ""}
+                  />
+                </Button>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                {senders.length
+                  ? `${senders.length} sender terverifikasi tersedia.`
+                  : "Klik tombol sinkronisasi setelah menambahkan sender di Mailketing."}
+              </p>
             </Field>
           </div>
           <Field label="Subjek">
