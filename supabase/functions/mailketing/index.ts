@@ -237,7 +237,13 @@ export default {
         const { data: storedToken } = await admin.rpc("read_mailketing_token");
         const token = submittedToken || normalizeToken(storedToken);
         if (token.length < 8) return json({ success: false, message: "Token Mailketing wajib diisi." }, 422);
-        const officialValidation = await requestMailketingV1Credits(token);
+        const officialValidation = await requestMailketingV1Credits(token).catch(
+          (error) => ({
+            success: false,
+            message: error instanceof Error ? error.message : "Endpoint saldo tidak dapat dihubungi.",
+            http_status: 0,
+          }),
+        );
         const validation =
           officialValidation.success
             ? officialValidation
@@ -318,6 +324,29 @@ export default {
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
         requestMailketing(normalizeToken(token), path, body, corporate);
+      const safeProvider = (
+        path: string,
+        body?: unknown,
+        corporate = false,
+      ) =>
+        provider(path, body, corporate).catch((error) => ({
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Mailketing tidak dapat dihubungi.",
+          http_status: 0,
+          data: null,
+        }));
+      const safeOfficialCredits = () =>
+        requestMailketingV1Credits(normalizeToken(token)).catch((error) => ({
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Endpoint saldo Mailketing tidak dapat dihubungi.",
+          http_status: 0,
+        }));
       const sendEmail = async (payload: Record<string, unknown>) => {
         const primary = await provider("/send", payload);
         if (
@@ -336,10 +365,10 @@ export default {
 
       if (action === "sync") {
         const [officialCredits, stackCredits, senders, lists, settingsResult] = await Promise.all([
-          requestMailketingV1Credits(normalizeToken(token)),
-          provider("/credits"),
-          provider("/senders"),
-          provider("/lists"),
+          safeOfficialCredits(),
+          safeProvider("/credits"),
+          safeProvider("/senders"),
+          safeProvider("/lists"),
           admin.from("app_settings")
             .select("default_from_email")
             .eq("id", true)
@@ -359,9 +388,16 @@ export default {
           ]),
         );
         return json({
-          success: credits.success !== false && creditBalance !== null,
+          success:
+            creditBalance !== null ||
+            senders.success === true ||
+            lists.success === true,
           credit_balance: creditBalance,
           credits,
+          credit_sources: {
+            official: officialCredits,
+            stack: stackCredits,
+          },
           senders,
           verified_senders: verifiedSenders,
           active_sender: defaultSender || verifiedSenders[0] || null,
@@ -369,7 +405,7 @@ export default {
           message:
             creditBalance !== null
               ? "Kredit Mailketing berhasil diperbarui."
-              : credits.message || "Saldo kredit tidak ditemukan pada respons Mailketing.",
+              : `Saldo belum ditemukan. Official: ${officialCredits.message ?? "gagal"}; Stack: ${stackCredits.message ?? "gagal"}.`,
         });
       }
       if (action === "add-subscriber") {
@@ -406,11 +442,11 @@ export default {
         ]);
         const recipients = requested.filter((item: any) => !blocked.has(String(item.email).trim().toLowerCase()));
         if (!recipients.length) return json({ success: false, message: "Semua penerima berada di daftar unsubscribe/blacklist." }, 422);
-        const officialCreditCheck = await requestMailketingV1Credits(normalizeToken(token));
+        const officialCreditCheck = await safeOfficialCredits();
         const creditCheck =
           extractCreditBalance(officialCreditCheck) !== null
             ? officialCreditCheck
-            : await provider("/credits");
+            : await safeProvider("/credits");
         const credits = extractCreditBalance(creditCheck) ?? 0;
         if (creditCheck.success !== false && recipients.length > credits) {
           return json({ success: false, code: "INSUFFICIENT_CREDITS", message: `Kredit tidak cukup. Dibutuhkan ${recipients.length}, tersedia ${credits}.` }, 422);
