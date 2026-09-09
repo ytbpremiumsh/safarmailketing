@@ -2990,6 +2990,27 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     return row.last_error || row.provider_message || "—";
   };
 
+  const recipientOpenedAt = (row: any) =>
+    row.provider_opened_at || row.internal_opened_at || row.opened_at;
+  const recipientClickedAt = (row: any) =>
+    row.provider_first_clicked_at ||
+    row.internal_first_clicked_at ||
+    row.first_clicked_at;
+  const recipientOpenCount = (row: any) =>
+    Number(row.provider_open_count ?? 0) > 0
+      ? Number(row.provider_open_count)
+      : Number(row.internal_open_count ?? row.open_count ?? 0);
+  const recipientClickCount = (row: any) =>
+    Number(row.provider_click_count ?? 0) > 0
+      ? Number(row.provider_click_count)
+      : Number(row.internal_click_count ?? row.click_count ?? 0);
+  const recipientTrackingSource = (row: any) =>
+    row.provider_opened_at || row.provider_first_clicked_at
+      ? "Mailketing"
+      : row.internal_opened_at || row.internal_first_clicked_at
+        ? "Tracking internal"
+        : "Belum ada aktivitas";
+
   const getRecipientName = (row: any) =>
     row.variables?.Nama ||
     row.variables?.nama ||
@@ -3125,8 +3146,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         delivered: detail.rows.filter((row) =>
           ["sent", "delivered"].includes(row.status),
         ).length,
-        opened: detail.rows.filter((row) => Boolean(row.opened_at)).length,
-        clicked: detail.rows.filter((row) => Boolean(row.first_clicked_at))
+        opened: detail.rows.filter((row) => Boolean(recipientOpenedAt(row))).length,
+        clicked: detail.rows.filter((row) => Boolean(recipientClickedAt(row)))
           .length,
         failed: detail.rows.filter((row) => row.status === "failed").length,
         bounced: detail.rows.filter((row) => row.status === "bounced").length,
@@ -3148,12 +3169,12 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         const filterMatches =
           detailFilter === "all" ||
           (detailFilter === "delivered" && delivered) ||
-          (detailFilter === "opened" && Boolean(row.opened_at)) ||
-          (detailFilter === "unopened" && delivered && !row.opened_at) ||
-          (detailFilter === "clicked" && Boolean(row.first_clicked_at)) ||
+          (detailFilter === "opened" && Boolean(recipientOpenedAt(row))) ||
+          (detailFilter === "unopened" && delivered && !recipientOpenedAt(row)) ||
+          (detailFilter === "clicked" && Boolean(recipientClickedAt(row))) ||
           (detailFilter === "unclicked" &&
             delivered &&
-            !row.first_clicked_at) ||
+            !recipientClickedAt(row)) ||
           (detailFilter === "failed" && row.status === "failed") ||
           (detailFilter === "bounced" && row.status === "bounced") ||
           (detailFilter === "rejected" && row.status === "rejected") ||
@@ -3186,13 +3207,13 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           row.email,
           row.status,
           row.attempts,
-          row.open_count ?? 0,
-          row.opened_at
-            ? new Date(row.opened_at).toLocaleString("id-ID")
+          recipientOpenCount(row) ?? 0,
+          recipientOpenedAt(row)
+            ? new Date(recipientOpenedAt(row)).toLocaleString("id-ID")
             : "",
-          row.click_count ?? 0,
-          row.first_clicked_at
-            ? new Date(row.first_clicked_at).toLocaleString("id-ID")
+          recipientClickCount(row) ?? 0,
+          recipientClickedAt(row)
+            ? new Date(recipientClickedAt(row)).toLocaleString("id-ID")
             : "",
           row.provider_status_code ?? "",
           providerResponseText(row),
@@ -3213,7 +3234,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "Belum dibuka",
           detail.rows.filter(
             (row) =>
-              ["sent", "delivered"].includes(row.status) && !row.opened_at,
+              ["sent", "delivered"].includes(row.status) && !recipientOpenedAt(row),
           ).length,
         ],
         ["clicked", "Sudah klik", detailStats.clicked],
@@ -3223,7 +3244,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           detail.rows.filter(
             (row) =>
               ["sent", "delivered"].includes(row.status) &&
-              !row.first_clicked_at,
+              !recipientClickedAt(row),
           ).length,
         ],
         ["failed", "Gagal teknis", detailStats.failed],
@@ -3379,21 +3400,28 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                           </span>
                         </Td>
                         <Td>{row.attempts}</Td>
-                        <Td>{row.open_count ?? 0}</Td>
+                        <Td>{recipientOpenCount(row) ?? 0}</Td>
                         <Td>
-                          {row.opened_at
-                            ? new Date(row.opened_at).toLocaleString("id-ID")
+                          {recipientOpenedAt(row)
+                            ? new Date(recipientOpenedAt(row)).toLocaleString("id-ID")
                             : "Belum dibuka"}
                         </Td>
-                        <Td>{row.click_count ?? 0}</Td>
+                        <Td>{recipientClickCount(row) ?? 0}</Td>
                         <Td>
-                          {row.first_clicked_at
+                          {recipientClickedAt(row)
                             ? new Date(
-                                row.first_clicked_at,
+                                recipientClickedAt(row),
                               ).toLocaleString("id-ID")
                             : "Belum klik"}
                         </Td>
-                        <Td><span className="block max-w-md break-words text-xs">{providerResponseText(row)}</span></Td>
+                        <Td>
+                          <span className="block text-xs font-semibold text-slate-600">
+                            {recipientTrackingSource(row)}
+                          </span>
+                          <span className="mt-1 block max-w-md break-words text-xs text-slate-500">
+                            {providerResponseText(row)}
+                          </span>
+                        </Td>
                       </tr>
                     ))
                   ) : (
@@ -3427,34 +3455,34 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div
-                        className={`rounded-xl p-3 ${row.opened_at ? "bg-sky-50 text-sky-700" : "bg-slate-50 text-slate-500"}`}
+                        className={`rounded-xl p-3 ${recipientOpenedAt(row) ? "bg-sky-50 text-sky-700" : "bg-slate-50 text-slate-500"}`}
                       >
                         <p>Email dibuka</p>
                         <b className="mt-1 block">
-                          {row.open_count ?? 0} kali
+                          {recipientOpenCount(row) ?? 0} kali
                         </b>
                       </div>
                       <div
-                        className={`rounded-xl p-3 ${row.first_clicked_at ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"}`}
+                        className={`rounded-xl p-3 ${recipientClickedAt(row) ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"}`}
                       >
                         <p>Tautan diklik</p>
                         <b className="mt-1 block">
-                          {row.click_count ?? 0} kali
+                          {recipientClickCount(row) ?? 0} kali
                         </b>
                       </div>
                     </div>
                     <div className="space-y-1 text-xs text-slate-500">
                       <p>
                         Dibuka:{" "}
-                        {row.opened_at
-                          ? new Date(row.opened_at).toLocaleString("id-ID")
+                        {recipientOpenedAt(row)
+                          ? new Date(recipientOpenedAt(row)).toLocaleString("id-ID")
                           : "Belum pernah"}
                       </p>
                       <p>
                         Klik:{" "}
-                        {row.first_clicked_at
+                        {recipientClickedAt(row)
                           ? new Date(
-                              row.first_clicked_at,
+                              recipientClickedAt(row),
                             ).toLocaleString("id-ID")
                           : "Belum pernah"}
                       </p>
