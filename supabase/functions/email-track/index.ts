@@ -53,7 +53,7 @@ export default {
     });
     const { data: recipient } = await admin
       .from("campaign_recipients")
-      .select("contact_id,email,opened_at,first_clicked_at,open_count,click_count")
+      .select("contact_id,email,internal_opened_at,internal_first_clicked_at,internal_open_count,internal_click_count")
       .eq("id", recipientId)
       .eq("campaign_id", campaignId)
       .maybeSingle();
@@ -83,36 +83,22 @@ export default {
 
     if (recipient) {
       const now = new Date().toISOString();
-      const firstEvent = action === "open" ? !recipient.opened_at : !recipient.first_clicked_at;
       await admin
         .from("campaign_recipients")
         .update(
           action === "open"
             ? {
-                opened_at: recipient.opened_at ?? now,
-                open_count: (recipient.open_count ?? 0) + 1,
+                internal_opened_at: recipient.internal_opened_at ?? now,
+                internal_open_count: (recipient.internal_open_count ?? 0) + 1,
                 updated_at: now,
               }
             : {
-                first_clicked_at: recipient.first_clicked_at ?? now,
-                click_count: (recipient.click_count ?? 0) + 1,
+                internal_first_clicked_at: recipient.internal_first_clicked_at ?? now,
+                internal_click_count: (recipient.internal_click_count ?? 0) + 1,
                 updated_at: now,
               },
         )
         .eq("id", recipientId);
-
-      if (firstEvent) {
-        const field = action === "open" ? "opened_count" : "clicked_count";
-        const { data: campaign } = await admin
-          .from("campaigns")
-          .select(field)
-          .eq("id", campaignId)
-          .single();
-        await admin
-          .from("campaigns")
-          .update({ [field]: Number(campaign?.[field] ?? 0) + 1, updated_at: now })
-          .eq("id", campaignId);
-      }
 
       const forwarded = request.headers.get("x-forwarded-for") ?? "";
       const ipHash = forwarded
@@ -128,6 +114,7 @@ export default {
         target_url: action === "click" ? target : null,
         user_agent: request.headers.get("user-agent"),
         ip_hash: ipHash,
+        source: "internal",
       });
     }
 
