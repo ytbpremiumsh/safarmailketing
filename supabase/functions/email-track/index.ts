@@ -100,6 +100,20 @@ export default {
         )
         .eq("id", recipientId);
 
+      const campaignMetric = action === "open" ? "opened_count" : "clicked_count";
+      const metricFilter = action === "open"
+        ? "internal_opened_at.not.is.null,provider_opened_at.not.is.null"
+        : "internal_first_clicked_at.not.is.null,provider_first_clicked_at.not.is.null";
+      const { count: uniquePeople } = await admin
+        .from("campaign_recipients")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaignId)
+        .or(metricFilter);
+      await admin
+        .from("campaigns")
+        .update({ [campaignMetric]: uniquePeople ?? 0, updated_at: now })
+        .eq("id", campaignId);
+
       const forwarded = request.headers.get("x-forwarded-for") ?? "";
       const ipHash = forwarded
         ? hex(new Uint8Array(await crypto.subtle.digest(
