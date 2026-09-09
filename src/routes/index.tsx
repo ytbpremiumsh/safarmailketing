@@ -82,6 +82,22 @@ const getVerifiedSenders = (provider: any): string[] => {
   return Array.from(emails);
 };
 
+const getSenderDefaultName = (email: string, fallback = "") => {
+  const normalized = String(email ?? "").trim().toLowerCase();
+  const knownNames: Record<string, string> = {
+    "admin@safariman.id": "Safar Iman",
+    "noreply@ayopintar.com": "Ayo Pintar",
+  };
+  if (knownNames[normalized]) return knownNames[normalized];
+  if (fallback.trim()) return fallback.trim();
+  const domainName = normalized.split("@")[1]?.split(".")[0] ?? "";
+  return domainName
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 type Notice = { success: boolean; message: string };
 type Session = {
   access_token: string;
@@ -2288,7 +2304,11 @@ function Compose({
       preferred &&
       (!f.from_email || !senders.includes(f.from_email))
     ) {
-      setF((current) => ({ ...current, from_email: preferred }));
+      setF((current) => ({
+        ...current,
+        from_email: preferred,
+        from_name: getSenderDefaultName(preferred, current.from_name),
+      }));
     }
   }, [senders.join("|"), activeSender]);
   const recipients = useMemo(() => {
@@ -2447,7 +2467,14 @@ function Compose({
                 <select
                   className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
                   value={f.from_email}
-                  onChange={(e) => setF({ ...f, from_email: e.target.value })}
+                  onChange={(e) => {
+                    const email = e.target.value;
+                    setF({
+                      ...f,
+                      from_email: email,
+                      from_name: getSenderDefaultName(email, f.from_name),
+                    });
+                  }}
                 >
                   <option value="">
                     {syncingSenders
@@ -3117,8 +3144,14 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       if (!response.success) throw new Error(response.message || "Pengaturan API gagal dimuat.");
       const settings = response.settings ?? {};
       setTokenConfigured(Boolean(response.token_configured));
-      setFromName(settings.default_from_name ?? "");
-      setFromEmail(settings.default_from_email ?? "");
+      const savedEmail = settings.default_from_email ?? "";
+      setFromEmail(savedEmail);
+      setFromName(
+        getSenderDefaultName(
+          savedEmail,
+          settings.default_from_name ?? "",
+        ),
+      );
       setAvailableSenders(
         Array.isArray(settings.available_senders)
           ? settings.available_senders
@@ -3293,7 +3326,11 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                 <select
                   className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
                   value={fromEmail}
-                  onChange={(e) => setFromEmail(e.target.value)}
+                  onChange={(e) => {
+                    const email = e.target.value;
+                    setFromEmail(email);
+                    setFromName(getSenderDefaultName(email, fromName));
+                  }}
                   disabled={!admin || syncingSenders}
                 >
                   <option value="">
