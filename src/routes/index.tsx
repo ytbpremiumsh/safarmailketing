@@ -517,6 +517,28 @@ function Dashboard({
       method: "POST",
       body: JSON.stringify(body),
     });
+  const queueWorkerInFlight = useRef(false);
+  useEffect(() => {
+    if (profile?.role !== "admin") return;
+    const processQueue = async () => {
+      if (queueWorkerInFlight.current || document.visibilityState !== "visible") return;
+      queueWorkerInFlight.current = true;
+      try {
+        const result = await invoke({ action: "process-queue" });
+        if ((result?.processed ?? 0) > 0) await load();
+      } catch {
+        // Worker berikutnya akan mencoba kembali; error tersimpan per penerima.
+      } finally {
+        queueWorkerInFlight.current = false;
+      }
+    };
+    const initial = window.setTimeout(processQueue, 5000);
+    const interval = window.setInterval(processQueue, 60000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
+  }, [token, profile?.role]);
   const syncInFlight = useRef(false);
   const sync = async (options: { silent?: boolean } = {}) => {
     if (syncInFlight.current) return;
@@ -2954,6 +2976,28 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const [detailUpdatedAt, setDetailUpdatedAt] = useState<Date | null>(null);
   const [detailRefreshing, setDetailRefreshing] = useState(false);
 
+  const recipientStatusLabel = (status: string) =>
+    ({
+      pending: "Antre",
+      processing: "Diproses",
+      queued: "Diterima API",
+      sent: "Terkirim",
+      delivered: "Delivered",
+      failed: "Gagal teknis",
+      bounced: "Bounce",
+      rejected: "Rejected",
+      cancelled: "Dibatalkan",
+    } as Record<string, string>)[status] ?? status;
+
+  const providerResponseText = (row: any) => {
+    if (row.provider_response) {
+      try {
+        return JSON.stringify(row.provider_response);
+      } catch {}
+    }
+    return row.last_error || row.provider_message || "—";
+  };
+
   const getRecipientName = (row: any) =>
     row.variables?.Nama ||
     row.variables?.nama ||
@@ -3087,12 +3131,14 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     ? {
         total: detail.rows.length,
         delivered: detail.rows.filter((row) =>
-          ["queued", "sent"].includes(row.status),
+          ["sent", "delivered"].includes(row.status),
         ).length,
         opened: detail.rows.filter((row) => Boolean(row.opened_at)).length,
         clicked: detail.rows.filter((row) => Boolean(row.first_clicked_at))
           .length,
         failed: detail.rows.filter((row) => row.status === "failed").length,
+        bounced: detail.rows.filter((row) => row.status === "bounced").length,
+        rejected: detail.rows.filter((row) => row.status === "rejected").length,
         pending: detail.rows.filter((row) =>
           ["pending", "processing"].includes(row.status),
         ).length,
@@ -3106,7 +3152,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           String(row.email)
             .toLowerCase()
             .includes(detailQuery.trim().toLowerCase());
-        const delivered = ["queued", "sent"].includes(row.status);
+        const delivered = ["sent", "delivered"].includes(row.status);
         const filterMatches =
           detailFilter === "all" ||
           (detailFilter === "delivered" && delivered) ||
@@ -3117,6 +3163,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
             delivered &&
             !row.first_clicked_at) ||
           (detailFilter === "failed" && row.status === "failed") ||
+          (detailFilter === "bounced" && row.status === "bounced") ||
+          (detailFilter === "rejected" && row.status === "rejected") ||
           (detailFilter === "pending" &&
             ["pending", "processing"].includes(row.status)) ||
           (detailFilter === "cancelled" && row.status === "cancelled");
@@ -3137,7 +3185,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "Pertama Dibuka",
           "Jumlah Klik",
           "Pertama Klik",
-          "Pesan Provider",
+          "HTTP Provider",
+          "Respons Asli Mailketing",
           "Error",
         ],
         ...filteredDetailRows.map((row) => [
@@ -3153,7 +3202,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           row.first_clicked_at
             ? new Date(row.first_clicked_at).toLocaleString("id-ID")
             : "",
-          row.provider_message ?? "",
+          row.provider_status_code ?? "",
+          providerResponseText(row),
           row.last_error ?? "",
         ]),
       ],
@@ -3171,7 +3221,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "Belum dibuka",
           detail.rows.filter(
             (row) =>
-              ["queued", "sent"].includes(row.status) && !row.opened_at,
+              ["sent", "delivered"].includes(row.status) && !row.opened_at,
           ).length,
         ],
         ["clicked", "Sudah klik", detailStats.clicked],
@@ -3180,11 +3230,13 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "Belum klik",
           detail.rows.filter(
             (row) =>
-              ["queued", "sent"].includes(row.status) &&
+              ["sent", "delivered"].includes(row.status) &&
               !row.first_clicked_at,
           ).length,
         ],
-        ["failed", "Gagal", detailStats.failed],
+        ["failed", "Gagal teknis", detailStats.failed],
+        ["bounced", "Bounce", detailStats.bounced],
+        ["rejected", "Rejected", detailStats.rejected],
         ["pending", "Antre", detailStats.pending],
         [
           "cancelled",
@@ -3252,7 +3304,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 </Button>
               </div>
             </div>
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
               {[
                 ["Total", detailStats.total, "bg-slate-50 text-slate-700"],
                 [
@@ -3263,6 +3315,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 ["Dibuka", detailStats.opened, "bg-sky-50 text-sky-700"],
                 ["Klik", detailStats.clicked, "bg-violet-50 text-violet-700"],
                 ["Gagal", detailStats.failed, "bg-red-50 text-red-700"],
+                ["Bounce", detailStats.bounced, "bg-orange-50 text-orange-700"],
+                ["Rejected", detailStats.rejected, "bg-rose-50 text-rose-700"],
                 ["Antre", detailStats.pending, "bg-amber-50 text-amber-700"],
               ].map(([label, value, color]) => (
                 <div
@@ -3329,7 +3383,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                         <Td>{row.email}</Td>
                         <Td>
                           <span className="rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
-                            {row.status}
+                            {recipientStatusLabel(row.status)}
                           </span>
                         </Td>
                         <Td>{row.attempts}</Td>
@@ -3347,7 +3401,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                               ).toLocaleString("id-ID")
                             : "Belum klik"}
                         </Td>
-                        <Td>{row.last_error || row.provider_message || "—"}</Td>
+                        <Td><span className="block max-w-md break-words text-xs">{providerResponseText(row)}</span></Td>
                       </tr>
                     ))
                   ) : (
@@ -3376,7 +3430,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                         {row.email}
                       </p>
                       <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
-                        {row.status}
+                        {recipientStatusLabel(row.status)}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -3414,7 +3468,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                       </p>
                       {(row.last_error || row.provider_message) && (
                         <p className="rounded-xl bg-slate-50 p-2">
-                          {row.last_error || row.provider_message}
+                          {providerResponseText(row)}
                         </p>
                       )}
                     </div>
