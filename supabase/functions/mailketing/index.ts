@@ -527,9 +527,51 @@ export default {
         return json({ success: true, message: "Kampanye dibatalkan." });
       }
       if (action === "retry") {
-        await admin.from("campaign_recipients").update({ status: "pending", last_error: null, updated_at: new Date().toISOString() }).eq("campaign_id", input.campaign_id).eq("status", "failed");
-        await admin.from("campaigns").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", input.campaign_id);
-        return json({ success: true, message: "Email gagal dimasukkan kembali ke antrean." });
+        const [{ data: failedRows }, { data: suppressions }, { data: inactiveContacts }] = await Promise.all([
+          admin.from("campaign_recipients")
+            .select("id,email,contact_id")
+            .eq("campaign_id", input.campaign_id)
+            .eq("status", "failed")
+            .limit(10000),
+          admin.from("suppressions").select("email").limit(10000),
+          admin.from("contacts")
+            .select("id,email")
+            .or("status.neq.active,unsubscribed_at.not.is.null,bounce_count.gt.0")
+            .limit(10000),
+        ]);
+        const blockedEmails = new Set([
+          ...(suppressions ?? []).map((row: any) => String(row.email).trim().toLowerCase()),
+          ...(inactiveContacts ?? []).map((row: any) => String(row.email).trim().toLowerCase()),
+        ]);
+        const blockedContactIds = new Set(
+          (inactiveContacts ?? []).map((row: any) => String(row.id)),
+        );
+        const eligibleIds = (failedRows ?? [])
+          .filter((row: any) =>
+            !blockedEmails.has(String(row.email).trim().toLowerCase()) &&
+            (!row.contact_id || !blockedContactIds.has(String(row.contact_id)))
+          )
+          .map((row: any) => row.id);
+        if (eligibleIds.length) {
+          await admin.from("campaign_recipients").update({
+            status: "pending",
+            last_error: null,
+            provider_message: "Menunggu pengiriman ulang",
+            provider_response: null,
+            provider_status_code: null,
+            updated_at: new Date().toISOString(),
+          }).in("id", eligibleIds);
+        }
+        await admin.from("campaigns").update({
+          status: eligibleIds.length ? "processing" : "partial",
+          updated_at: new Date().toISOString(),
+        }).eq("id", input.campaign_id);
+        return json({
+          success: true,
+          retry_count: eligibleIds.length,
+          suppressed_count: (failedRows ?? []).length - eligibleIds.length,
+          message: `${eligibleIds.length} email aman dimasukkan kembali ke antrean; ${(failedRows ?? []).length - eligibleIds.length} kontak bounce/nonaktif diblokir.`,
+        });
       }
       if (action === "process-queue") {
         const now = new Date().toISOString();
@@ -537,9 +579,16 @@ export default {
         const { data: campaigns } = await admin.from("campaigns").select("*").eq("status", "processing").limit(5);
         let processed = 0;
         for (const campaign of campaigns ?? []) {
-          const { data: recipients } = await admin.from("campaign_recipients").select("*").eq("campaign_id", campaign.id).eq("status", "pending").limit(50);
+          const { data: recipients } = await admin.from("campaign_recipients").select("*").eq("campaign_id", campaign.id).eq("status", "pending").order("updated_at").limit(5);
           for (const recipient of recipients ?? []) {
-            await admin.from("campaign_recipients").update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now }).eq("id", recipient.id).eq("status", "pending");
+            const { data: claimed } = await admin
+              .from("campaign_recipients")
+              .update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now })
+              .eq("id", recipient.id)
+              .eq("status", "pending")
+              .select("id")
+              .maybeSingle();
+            if (!claimed) continue;
             const variables = { email: recipient.email, ...(recipient.variables ?? {}) };
             const personalizedContent = interpolate(campaign.html_content, variables);
             const trackedContent = await addTracking(
@@ -581,16 +630,51 @@ export default {
             const providerMessage = trackingFallback
               ? `${response.message ?? "Email queued successfully"} (tracking fallback)`
               : response.message;
+            const responseText = String(response.message ?? "");
+            const isBounce =
+              !response.success &&
+              /bounce|bad address|invalid (recipient|email)|mailbox (not found|unavailable)|user unknown|domain not found/i.test(responseText);
+            const isRejected =
+              !response.success &&
+              !isBounce &&
+              Number(response.http_status) >= 400 &&
+              Number(response.http_status) < 500 &&
+              Number(response.http_status) !== 429;
+            const failedStatus = isBounce ? "bounced" : isRejected ? "rejected" : "failed";
+            const eventTime = new Date().toISOString();
             await admin.from("campaign_recipients").update(response.success ? {
-              status: "queued", message_id: response.data?.message_id ?? null, provider_message: providerMessage, last_error: null, queued_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+              status: "sent",
+              message_id: response.data?.message_id ?? response.message_id ?? null,
+              provider_message: providerMessage,
+              provider_response: response,
+              provider_status_code: response.http_status ?? null,
+              last_error: null,
+              sent_at: eventTime,
+              queued_at: eventTime,
+              updated_at: eventTime,
             } : {
-              status: "failed", last_error: response.message ?? "Pengiriman ditolak Mailketing.", provider_message: providerMessage, updated_at: new Date().toISOString(),
+              status: failedStatus,
+              last_error: response.message ?? "Pengiriman ditolak Mailketing.",
+              provider_message: providerMessage,
+              provider_response: response,
+              provider_status_code: response.http_status ?? null,
+              bounced_at: isBounce ? eventTime : null,
+              rejected_at: isRejected ? eventTime : null,
+              updated_at: eventTime,
             }).eq("id", recipient.id);
+            if (isBounce && recipient.contact_id) {
+              await admin.from("contacts").update({
+                status: "bounced",
+                bounce_count: 1,
+                updated_at: eventTime,
+              }).eq("id", recipient.contact_id);
+            }
             processed++;
+            await new Promise((resolve) => setTimeout(resolve, 750));
           }
           const { data: all } = await admin.from("campaign_recipients").select("status").eq("campaign_id", campaign.id);
-          const sent = all?.filter((r: any) => ["queued", "sent"].includes(r.status)).length ?? 0;
-          const failed = all?.filter((r: any) => r.status === "failed").length ?? 0;
+          const sent = all?.filter((r: any) => ["sent", "delivered"].includes(r.status)).length ?? 0;
+          const failed = all?.filter((r: any) => ["failed", "bounced", "rejected"].includes(r.status)).length ?? 0;
           const pending = all?.filter((r: any) => ["pending", "processing"].includes(r.status)).length ?? 0;
           await admin.from("campaigns").update({ sent_count: sent, failed_count: failed, status: pending ? "processing" : failed ? (sent ? "partial" : "failed") : "completed", completed_at: pending ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", campaign.id);
         }
