@@ -2971,9 +2971,11 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         token,
       );
       setDetail((current) =>
-        current?.campaign.id === campaign.id || !current
-          ? { campaign, rows }
-          : current,
+        silent
+          ? current?.campaign.id === campaign.id
+            ? { campaign, rows }
+            : current
+          : { campaign, rows },
       );
       setDetailUpdatedAt(new Date());
       return true;
