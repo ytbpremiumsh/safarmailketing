@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   History,
   KeyRound,
@@ -257,6 +259,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login"),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
+    [showPassword, setShowPassword] = useState(false),
     [name, setName] = useState(""),
     [loading, setLoading] = useState(false),
     [notice, setNotice] = useState<Notice | null>(null);
@@ -372,12 +375,32 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
               />
             </Field>
             <Field label="Password">
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={8}
+                  className="pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-md text-slate-400 transition-colors hover:bg-slate-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                  aria-label={
+                    showPassword
+                      ? "Sembunyikan password"
+                      : "Tampilkan password"
+                  }
+                  title={
+                    showPassword
+                      ? "Sembunyikan password"
+                      : "Tampilkan password"
+                  }
+                >
+                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                </button>
+              </div>
             </Field>
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700"
