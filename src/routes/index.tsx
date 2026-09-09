@@ -117,6 +117,7 @@ type Contact = {
   unsubscribed_at?: string;
   bounce_count?: number;
   custom_fields?: Record<string, string>;
+  workspace_sender?: string;
 };
 type Template = {
   id: string;
@@ -610,6 +611,7 @@ function Dashboard({
       {view === "contacts" && (
         <Contacts
           contacts={contacts}
+          provider={provider}
           token={token}
           userId={session.user.id}
           reload={load}
@@ -847,15 +849,36 @@ function Overview({
   );
 }
 
-function Contacts({ contacts, token, userId, reload, setNotice }: any) {
+function Contacts({ contacts: allContacts, provider, token, userId, reload, setNotice }: any) {
   const emptyForm = {
     registration_code: "",
     full_name: "",
     email: "",
     mobile: "",
     category: "Umum",
+    nis: "",
+    no: "",
+    level: "",
+    kelas: "",
+    jurusan: "",
+    username: "",
+    password: "",
   };
   const [form, setForm] = useState(emptyForm);
+  const workspaceOptions = Array.from(new Set([
+    "admin@safariman.id",
+    "noreply@ayopintar.com",
+    ...getVerifiedSenders(provider),
+  ]));
+  const [contactWorkspace, setContactWorkspace] = useState(
+    String(provider?.active_sender ?? "admin@safariman.id").toLowerCase(),
+  );
+  const isAyoPintar = contactWorkspace === "noreply@ayopintar.com";
+  const workspaceContacts = allContacts.filter(
+    (contact: Contact) =>
+      String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
+      contactWorkspace,
+  );
   const [importCategory, setImportCategory] = useState("Umum");
   const [bulkText, setBulkText] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -868,10 +891,10 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   const [contactPage, setContactPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const contactCategories = Array.from(
-    new Set(contacts.map((contact: Contact) => contact.category || "Umum")),
+    new Set(workspaceContacts.map((contact: Contact) => contact.category || "Umum")),
   ).sort() as string[];
   const normalizedQuery = contactQuery.trim().toLowerCase();
-  const filteredContacts = contacts.filter((contact: Contact) => {
+  const filteredContacts = workspaceContacts.filter((contact: Contact) => {
     const matchesCategory =
       contactCategoryFilter === "all" ||
       (contact.category || "Umum") === contactCategoryFilter;
@@ -913,8 +936,24 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           method: editingContactId ? "PATCH" : "POST",
           headers: { Prefer: "return=minimal" },
           body: JSON.stringify({
-            ...form,
+            registration_code: isAyoPintar ? form.nis : form.registration_code,
+            full_name: form.full_name,
             first_name: form.full_name,
+            email: form.email.trim().toLowerCase(),
+            mobile: isAyoPintar ? null : form.mobile,
+            category: form.category,
+            workspace_sender: contactWorkspace,
+            custom_fields: isAyoPintar
+              ? {
+                  nis: form.nis,
+                  no: form.no,
+                  level: form.level,
+                  kelas: form.kelas,
+                  jurusan: form.jurusan,
+                  username: form.username,
+                  password: form.password,
+                }
+              : {},
             ...(editingContactId ? {} : { created_by: userId }),
           }),
         },
@@ -1073,34 +1112,55 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
         "no whatsapp": "mobile",
         wa: "mobile",
       };
-      const required = ["kode", "daftar nama", "email", "whatsapp"];
+      const required = isAyoPintar
+        ? ["nis", "no", "nama", "email", "level", "kelas", "jurusan", "username", "password"]
+        : ["kode", "daftar nama", "email", "whatsapp"];
       const missing = required.filter((name) => !headers.includes(name));
       if (missing.length) {
         throw new Error(
-          `Header Excel belum sesuai. Gunakan: Kode | Daftar Nama | Email | WhatsApp. Kolom tidak ditemukan: ${missing.join(", ")}.`,
+          `Header Excel belum sesuai. Gunakan: ${isAyoPintar ? "NIS | No | Nama | Email | Level | Kelas | Jurusan | Username | Password" : "Kode | Daftar Nama | Email | WhatsApp"}. Kolom tidak ditemukan: ${missing.join(", ")}.`,
         );
       }
 
       const rows = sheet
         .slice(1)
         .map((values) => {
+          const valueFor = (header: string) =>
+            String(values[headers.indexOf(header)] ?? "").trim();
           const contact: Record<string, unknown> = {
             created_by: userId,
             source: file.name.toLowerCase().endsWith(".xlsx") ? "excel" : "csv",
             category: importCategory.trim() || "Umum",
+            workspace_sender: contactWorkspace,
           };
-          headers.forEach((header, index) => {
-            const field = aliases[header];
-            if (field) contact[field] = String(values[index] ?? "").trim();
-          });
-          contact.first_name = contact.full_name;
+          if (isAyoPintar) {
+            contact.registration_code = valueFor("nis");
+            contact.full_name = valueFor("nama");
+            contact.email = valueFor("email").toLowerCase();
+            contact.first_name = contact.full_name;
+            contact.custom_fields = {
+              nis: valueFor("nis"),
+              no: valueFor("no"),
+              level: valueFor("level"),
+              kelas: valueFor("kelas"),
+              jurusan: valueFor("jurusan"),
+              username: valueFor("username"),
+              password: valueFor("password"),
+            };
+          } else {
+            headers.forEach((header, index) => {
+              const field = aliases[header];
+              if (field) contact[field] = String(values[index] ?? "").trim();
+            });
+            contact.first_name = contact.full_name;
+          }
           return contact;
         })
         .filter((contact) => contact.email);
 
       if (!rows.length) throw new Error("Tidak ada baris kontak dengan email yang valid.");
       for (let i = 0; i < rows.length; i += 250) {
-        await api("/rest/v1/contacts?on_conflict=email", token, {
+        await api("/rest/v1/contacts?on_conflict=workspace_sender,email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify(rows.slice(i, i + 250)),
@@ -1122,11 +1182,15 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   };
 
   const downloadTemplate = () => {
-    const csv = "\uFEFFKode,Daftar Nama,Email,WhatsApp\nHXP-001,Nama Lengkap,nama@email.com,081234567890\n";
+    const csv = isAyoPintar
+      ? "\uFEFFNIS,No,Nama,Email,Level,Kelas,Jurusan,Username,Password\n12345,1,Nama Peserta,nama@email.com,SMA,12,IPA,user.cbt,password123\n"
+      : "\uFEFFKode,Daftar Nama,Email,WhatsApp\nHXP-001,Nama Lengkap,nama@email.com,081234567890\n";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "template-kontak-safar-mail.csv";
+    link.download = isAyoPintar
+      ? "template-kontak-ayo-pintar.csv"
+      : "template-kontak-safar-iman.csv";
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1135,25 +1199,51 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
     setBusy(true);
     try {
       const parsed = parseCsv(bulkText);
-      const firstIsHeader =
-        normalizeHeader(parsed[0]?.[0]) === "kode" &&
-        normalizeHeader(parsed[0]?.[2]) === "email";
+      const firstIsHeader = isAyoPintar
+        ? normalizeHeader(parsed[0]?.[0]) === "nis"
+        : normalizeHeader(parsed[0]?.[0]) === "kode" &&
+          normalizeHeader(parsed[0]?.[2]) === "email";
       const dataRows = firstIsHeader ? parsed.slice(1) : parsed;
       const invalidLines: number[] = [];
       const seen = new Set<string>();
       const rows = dataRows
         .map((values, index) => {
           const lineNumber = index + (firstIsHeader ? 2 : 1);
+          if (isAyoPintar) {
+            const [nis, no, fullName, rawEmail, level, kelas, jurusan, username, password] =
+              values.map((value) => String(value ?? "").trim());
+            const email = rawEmail.toLowerCase();
+            if (
+              values.length < 9 ||
+              !nis || !no || !fullName ||
+              !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+              !level || !kelas || !jurusan || !username || !password
+            ) {
+              invalidLines.push(lineNumber);
+              return null;
+            }
+            if (seen.has(email)) return null;
+            seen.add(email);
+            return {
+              registration_code: nis,
+              full_name: fullName,
+              first_name: fullName,
+              email,
+              mobile: null,
+              category: importCategory.trim() || "Umum",
+              workspace_sender: contactWorkspace,
+              custom_fields: { nis, no, level, kelas, jurusan, username, password },
+              source: "bulk",
+              created_by: userId,
+            };
+          }
           const registrationCode = String(values[0] ?? "").trim();
           const mobile = String(values.at(-1) ?? "").trim();
           const email = String(values.at(-2) ?? "").trim().toLowerCase();
           const fullName = values.slice(1, -2).join(", ").trim();
           if (
-            values.length < 4 ||
-            !registrationCode ||
-            !fullName ||
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-            !mobile
+            values.length < 4 || !registrationCode || !fullName ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !mobile
           ) {
             invalidLines.push(lineNumber);
             return null;
@@ -1167,6 +1257,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             email,
             mobile,
             category: importCategory.trim() || "Umum",
+            workspace_sender: contactWorkspace,
             source: "bulk",
             created_by: userId,
           };
@@ -1182,7 +1273,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
 
       const batchSize = 200;
       for (let i = 0; i < rows.length; i += batchSize)
-        await api("/rest/v1/contacts?on_conflict=email", token, {
+        await api("/rest/v1/contacts?on_conflict=workspace_sender,email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify(rows.slice(i, i + batchSize)),
@@ -1227,7 +1318,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
 
   const deleteWholeCategory = async () => {
     if (!deleteCategory) return;
-    const count = contacts.filter(
+    const count = workspaceContacts.filter(
       (contact: Contact) => (contact.category || "Umum") === deleteCategory,
     ).length;
     if (!window.confirm(
@@ -1262,6 +1353,13 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
       email: contact.email,
       mobile: contact.mobile ?? "",
       category: contact.category ?? "Umum",
+      nis: contact.custom_fields?.nis ?? contact.registration_code ?? "",
+      no: contact.custom_fields?.no ?? "",
+      level: contact.custom_fields?.level ?? "",
+      kelas: contact.custom_fields?.kelas ?? "",
+      jurusan: contact.custom_fields?.jurusan ?? "",
+      username: contact.custom_fields?.username ?? "",
+      password: contact.custom_fields?.password ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1366,15 +1464,45 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
   return (
     <>
       <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
+      <Card className="border-emerald-200 bg-emerald-50/40">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-end sm:p-5">
+          <Field label="Workspace kontak aktif">
+            <select
+              className="h-11 w-full rounded-xl border border-emerald-200 bg-white px-3.5 text-sm shadow-sm"
+              value={contactWorkspace}
+              onChange={(event) => {
+                setContactWorkspace(event.target.value);
+                setForm(emptyForm);
+                setSelectedContactIds([]);
+                setContactCategoryFilter("all");
+              }}
+            >
+              {workspaceOptions.map((email) => (
+                <option key={email} value={email}>
+                  {getSenderDefaultName(email)} — {email}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="rounded-xl bg-white px-4 py-3 text-sm text-emerald-800 shadow-sm">
+            <b>{workspaceContacts.length}</b> kontak di workspace {getSenderDefaultName(contactWorkspace)}
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-6">
-          <Input
-            placeholder="Kode Pendaftaran"
-            value={form.registration_code}
-            onChange={(e) =>
-              setForm({ ...form, registration_code: e.target.value })
-            }
-          />
+          {isAyoPintar ? (
+            <>
+              <Input placeholder="NIS" value={form.nis} onChange={(e) => setForm({ ...form, nis: e.target.value })} />
+              <Input placeholder="No" value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} />
+            </>
+          ) : (
+            <Input
+              placeholder="Kode Pendaftaran"
+              value={form.registration_code}
+              onChange={(e) => setForm({ ...form, registration_code: e.target.value })}
+            />
+          )}
           <Input
             placeholder="Daftar Nama"
             value={form.full_name}
@@ -1386,11 +1514,17 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
-          <Input
-            placeholder="WhatsApp"
-            value={form.mobile}
-            onChange={(e) => setForm({ ...form, mobile: e.target.value })}
-          />
+          {isAyoPintar ? (
+            <>
+              <Input placeholder="Level" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} />
+              <Input placeholder="Kelas" value={form.kelas} onChange={(e) => setForm({ ...form, kelas: e.target.value })} />
+              <Input placeholder="Jurusan" value={form.jurusan} onChange={(e) => setForm({ ...form, jurusan: e.target.value })} />
+              <Input placeholder="Username CBT" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+              <Input placeholder="Password CBT" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            </>
+          ) : (
+            <Input placeholder="WhatsApp" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+          )}
           <Input
             placeholder="Kategori"
             value={form.category}
@@ -1418,8 +1552,10 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             onChange={(e) => setImportCategory(e.target.value)}
           />
           <label className="flex cursor-pointer sm:col-span-2 xl:col-span-4 items-center justify-center gap-2 rounded-xl border border-dashed p-4 text-sm text-slate-600 hover:bg-slate-50">
-            <Upload size={18} /> Import Excel/CSV: Kode | Daftar Nama | Email |
-            WhatsApp
+            <Upload size={18} /> Import Excel/CSV:{" "}
+            {isAyoPintar
+              ? "NIS | No | Nama | Email | Level | Kelas | Jurusan | Username | Password"
+              : "Kode | Daftar Nama | Email | WhatsApp"}
             <input
               hidden
               type="file"
@@ -1445,12 +1581,18 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs text-emerald-800">
-            Format: <code>Kode,Nama,Email,WhatsApp</code>
+            Format:{" "}
+            <code>
+              {isAyoPintar
+                ? "NIS,No,Nama,Email,Level,Kelas,Jurusan,Username,Password"
+                : "Kode,Nama,Email,WhatsApp"}
+            </code>
             <br />
             Contoh:{" "}
             <code>
-              HXP-EFE8A860,tria Nurul
-              kamilah,tnurulkamilah@gmail.com,085800685672
+              {isAyoPintar
+                ? "12345,1,Nama Peserta,nama@email.com,SMA,12,IPA,user.cbt,password123"
+                : "HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672"}
             </code>
           </div>
           <Textarea
@@ -1458,7 +1600,11 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             className="font-mono text-sm"
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
-            placeholder={"HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672\nHXP-ABC123,Nama Kedua,emailkedua@gmail.com,081234567890"}
+            placeholder={
+              isAyoPintar
+                ? "12345,1,Nama Peserta,nama@email.com,SMA,12,IPA,user.cbt,password123"
+                : "HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672\nHXP-ABC123,Nama Kedua,emailkedua@gmail.com,081234567890"
+            }
           />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <Field label="Masukkan ke kategori">
@@ -1496,7 +1642,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             <option value="">Pilih kategori yang akan dihapus</option>
             {contactCategories.map((category) => (
               <option key={category} value={category}>
-                {category} ({contacts.filter((contact: Contact) => (contact.category || "Umum") === category).length} kontak)
+                {category} ({workspaceContacts.filter((contact: Contact) => (contact.category || "Umum") === category).length} kontak)
               </option>
             ))}
           </select>
@@ -1507,16 +1653,16 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
             <Button
               type="button"
               variant="outline"
-              disabled={!contacts.length}
+              disabled={!workspaceContacts.length}
               onClick={() =>
                 setSelectedContactIds(
-                  selectedContactIds.length === contacts.length
+                  selectedContactIds.length === workspaceContacts.length
                     ? []
-                    : contacts.map((contact: Contact) => contact.id),
+                    : workspaceContacts.map((contact: Contact) => contact.id),
                 )
               }
             >
-              {selectedContactIds.length === contacts.length && contacts.length
+              {selectedContactIds.length === workspaceContacts.length && workspaceContacts.length
                 ? "Batalkan Semua"
                 : "Pilih Semua Kontak"}
             </Button>
@@ -1545,7 +1691,7 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
           <div>
             <CardTitle>Daftar Kontak</CardTitle>
             <p className="mt-1 text-sm text-slate-500">
-              Menampilkan {filteredContacts.length} dari {contacts.length} kontak.
+              Menampilkan {filteredContacts.length} dari {workspaceContacts.length} kontak.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_200px_130px_auto]">
@@ -1619,10 +1765,10 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                       }}
                     />
                   </Th>
-                  <Th>Kode</Th>
+                  <Th>{isAyoPintar ? "NIS" : "Kode"}</Th>
                   <Th>Daftar Nama</Th>
                   <Th>Email</Th>
-                  <Th>WhatsApp</Th>
+                  <Th>{isAyoPintar ? "Data CBT" : "WhatsApp"}</Th>
                   <Th>Kategori</Th>
                   <Th>Aksi</Th>
                 </tr>
@@ -1655,7 +1801,16 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                           "—"}
                       </Td>
                       <Td>{c.email}</Td>
-                      <Td>{c.mobile || "—"}</Td>
+                      <Td>
+                        {isAyoPintar ? (
+                          <div className="space-y-1 text-xs">
+                            <div>{c.custom_fields?.level || "—"} · Kelas {c.custom_fields?.kelas || "—"} · {c.custom_fields?.jurusan || "—"}</div>
+                            <div className="font-medium">{c.custom_fields?.username || "—"} / {c.custom_fields?.password || "—"}</div>
+                          </div>
+                        ) : (
+                          c.mobile || "—"
+                        )}
+                      </Td>
                       <Td>
                         <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
                           {c.category || "Umum"}
@@ -1722,15 +1877,15 @@ function Contacts({ contacts, token, userId, reload, setNotice }: any) {
                   </div>
                   <dl className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3 text-xs">
                     <div>
-                      <dt className="text-slate-400">Kode</dt>
+                      <dt className="text-slate-400">{isAyoPintar ? "NIS" : "Kode"}</dt>
                       <dd className="mt-1 font-medium text-slate-700">
                         {c.registration_code || "—"}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-slate-400">WhatsApp</dt>
+                      <dt className="text-slate-400">{isAyoPintar ? "Username CBT" : "WhatsApp"}</dt>
                       <dd className="mt-1 font-medium text-slate-700">
-                        {c.mobile || "—"}
+                        {isAyoPintar ? c.custom_fields?.username || "—" : c.mobile || "—"}
                       </dd>
                     </div>
                   </dl>
@@ -2272,15 +2427,20 @@ function Compose({
   );
   const senders = getVerifiedSenders(provider);
   const activeSender = String(provider?.active_sender ?? "").trim().toLowerCase();
+  const workspaceContacts = contacts.filter(
+    (contact: Contact) =>
+      String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
+      String(f.from_email || activeSender || "admin@safariman.id").toLowerCase(),
+  );
   const categories = Array.from(
     new Set(
-      contacts.map((contact: Contact) => contact.category || "Umum"),
+      workspaceContacts.map((contact: Contact) => contact.category || "Umum"),
     ),
   ).sort() as string[];
   const visibleContacts =
     categoryFilter === "all"
-      ? contacts
-      : contacts.filter(
+      ? workspaceContacts
+      : workspaceContacts.filter(
           (contact: Contact) =>
             (contact.category || "Umum") === categoryFilter,
         );
@@ -2311,8 +2471,13 @@ function Compose({
       }));
     }
   }, [senders.join("|"), activeSender]);
+  useEffect(() => {
+    setSelected([]);
+    setCategoryFilter("all");
+  }, [f.from_email]);
+
   const recipients = useMemo(() => {
-    const picked = contacts
+    const picked = workspaceContacts
       .filter(
         (c: Contact) =>
           selected.includes(c.id) && (c.status ?? "active") === "active",
@@ -2351,7 +2516,7 @@ function Compose({
     return [...picked, ...extra].filter(
       (r, i, a) => a.findIndex((x) => x.email === r.email) === i,
     );
-  }, [selected, manual, contacts]);
+  }, [selected, manual, workspaceContacts]);
   const useTemplate = (id: string) => {
     const t = templates.find((x: Template) => x.id === id);
     if (t) setF({ ...f, subject: t.subject, html_content: t.html_content });
