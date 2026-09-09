@@ -419,14 +419,6 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                 Lupa password?
               </button>
             )}
-            <button
-              className="w-full text-sm text-emerald-700"
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-            >
-              {mode === "login"
-                ? "Belum ada admin? Buat akun pertama"
-                : "Sudah punya akun? Masuk"}
-            </button>
           </CardContent>
         </Card>
       </Center>
