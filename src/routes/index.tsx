@@ -666,6 +666,7 @@ function Dashboard({
       {view === "history" && (
         <HistoryView
           campaigns={campaigns}
+          token={token}
           invoke={invoke}
           reload={load}
           setNotice={setNotice}
@@ -2950,6 +2951,45 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detailFilter, setDetailFilter] = useState("all");
   const [detailQuery, setDetailQuery] = useState("");
+  const [detailUpdatedAt, setDetailUpdatedAt] = useState<Date | null>(null);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
+
+  const getRecipientName = (row: any) =>
+    row.variables?.Nama ||
+    row.variables?.nama ||
+    row.variables?.full_name ||
+    row.variables?.name ||
+    row.variables?.["Daftar Nama"] ||
+    "—";
+
+  const loadDetailRows = async (campaign: Campaign, silent = false) => {
+    if (!silent) setBusyId(campaign.id);
+    else setDetailRefreshing(true);
+    try {
+      const rows = await api(
+        `/rest/v1/campaign_recipients?campaign_id=eq.${campaign.id}&select=*&order=updated_at.desc&limit=5000`,
+        token,
+      );
+      setDetail((current) =>
+        current?.campaign.id === campaign.id || !current
+          ? { campaign, rows }
+          : current,
+      );
+      setDetailUpdatedAt(new Date());
+      return true;
+    } catch (e) {
+      if (!silent) {
+        setNotice({
+          success: false,
+          message: e instanceof Error ? e.message : "Detail gagal dimuat.",
+        });
+      }
+      return false;
+    } finally {
+      if (!silent) setBusyId(null);
+      else setDetailRefreshing(false);
+    }
+  };
 
   const runAction = async (action: string, campaign: Campaign) => {
     if (
@@ -2974,24 +3014,22 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   };
 
   const showDetail = async (campaign: Campaign) => {
-    setBusyId(campaign.id);
-    try {
-      const rows = await api(
-        `/rest/v1/campaign_recipients?campaign_id=eq.${campaign.id}&select=*&order=updated_at.desc&limit=5000`,
-        token,
-      );
-      setDetail({ campaign, rows });
+    const loaded = await loadDetailRows(campaign);
+    if (loaded) {
       setDetailFilter("all");
       setDetailQuery("");
-    } catch (e) {
-      setNotice({
-        success: false,
-        message: e instanceof Error ? e.message : "Detail gagal dimuat.",
-      });
-    } finally {
-      setBusyId(null);
     }
   };
+
+  useEffect(() => {
+    if (!detail) return;
+    const campaign = detail.campaign;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible")
+        void loadDetailRows(campaign, true);
+    }, 10000);
+    return () => window.clearInterval(interval);
+  }, [detail?.campaign.id, token]);
 
   const exportCsv = (rows: unknown[][], filename: string) => {
     const csv =
@@ -3089,6 +3127,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     exportCsv(
       [
         [
+          "Nama",
           "Email",
           "Status",
           "Percobaan",
@@ -3100,6 +3139,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "Error",
         ],
         ...filteredDetailRows.map((row) => [
+          getRecipientName(row),
           row.email,
           row.status,
           row.attempts,
@@ -3182,10 +3222,22 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
               <div>
                 <CardTitle>Detail: {detail.campaign.name}</CardTitle>
                 <p className="mt-1 text-sm text-slate-500">
-                  Klik filter untuk melihat kelompok penerima tertentu.
+                  Data diperbarui otomatis setiap 10 detik
+                  {detailUpdatedAt
+                    ? ` · Terakhir ${detailUpdatedAt.toLocaleTimeString("id-ID")}`
+                    : ""}.
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={detailRefreshing}
+                  onClick={() => void loadDetailRows(detail.campaign, true)}
+                >
+                  <RefreshCw className={detailRefreshing ? "animate-spin" : ""} />
+                  Perbarui
+                </Button>
                 <Button variant="outline" size="sm" onClick={exportDetail}>
                   <FileSpreadsheet /> Export Detail
                 </Button>
@@ -3256,6 +3308,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
               <table className="min-w-[1100px] w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50 text-left">
+                    <Th>Nama</Th>
                     <Th>Email</Th>
                     <Th>Status</Th>
                     <Th>Percobaan</Th>
@@ -3270,6 +3323,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                   {filteredDetailRows.length ? (
                     filteredDetailRows.map((row: any) => (
                       <tr key={row.id} className="border-b hover:bg-slate-50">
+                        <Td>{getRecipientName(row)}</Td>
                         <Td>{row.email}</Td>
                         <Td>
                           <span className="rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
@@ -3297,7 +3351,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                   ) : (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-4 py-10 text-center text-slate-500"
                       >
                         Penerima tidak ditemukan pada filter ini.
@@ -3313,7 +3367,10 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 filteredDetailRows.map((row: any) => (
                   <article key={row.id} className="space-y-3 p-4">
                     <div>
-                      <p className="break-all font-semibold text-slate-900">
+                      <p className="font-semibold text-slate-900">
+                        {getRecipientName(row)}
+                      </p>
+                      <p className="break-all text-sm text-slate-500">
                         {row.email}
                       </p>
                       <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
