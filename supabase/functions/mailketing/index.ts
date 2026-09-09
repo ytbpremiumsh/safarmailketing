@@ -219,7 +219,7 @@ export default {
       if (action === "get-settings") {
         const [{ data: settings, error: settingsError }, { data: storedToken, error: tokenError }] = await Promise.all([
           admin.from("app_settings")
-            .select("default_from_name,default_from_email,corporate_mode,updated_at")
+            .select("default_from_name,default_from_email,available_senders,corporate_mode,updated_at")
             .eq("id", true)
             .maybeSingle(),
           admin.rpc("read_mailketing_token"),
@@ -234,7 +234,13 @@ export default {
 
       if (action === "save-settings") {
         const submittedToken = normalizeToken(input.token);
-        const { data: storedToken } = await admin.rpc("read_mailketing_token");
+        const [{ data: storedToken }, { data: currentSettings }] = await Promise.all([
+          admin.rpc("read_mailketing_token"),
+          admin.from("app_settings")
+            .select("available_senders")
+            .eq("id", true)
+            .maybeSingle(),
+        ]);
         const token = submittedToken || normalizeToken(storedToken);
         if (token.length < 8) return json({ success: false, message: "Token Mailketing wajib diisi." }, 422);
         const officialValidation = await requestMailketingV1Credits(token).catch(
@@ -261,9 +267,18 @@ export default {
           const { error } = await admin.rpc("store_mailketing_token", { p_token: token, p_user_id: userId });
           if (error) return json({ success: false, message: error.message }, 400);
         }
+        const selectedSender = String(input.default_from_email ?? "")
+          .trim()
+          .toLowerCase();
+        const availableSenders = Array.from(new Set([
+          ...(Array.isArray(currentSettings?.available_senders) ? currentSettings.available_senders : []),
+          ...(Array.isArray(input.available_senders) ? input.available_senders : []),
+          ...(selectedSender ? [selectedSender] : []),
+        ].map((email) => String(email).trim().toLowerCase()).filter(Boolean)));
         const { error: settingsError } = await admin.from("app_settings").update({
           default_from_name: input.default_from_name || null,
-          default_from_email: input.default_from_email || null,
+          default_from_email: selectedSender || null,
+          available_senders: availableSenders,
           corporate_mode: Boolean(input.corporate_mode),
           updated_by: userId,
           updated_at: new Date().toISOString(),
@@ -370,7 +385,7 @@ export default {
           safeProvider("/senders"),
           safeProvider("/lists"),
           admin.from("app_settings")
-            .select("default_from_email")
+            .select("default_from_email,available_senders")
             .eq("id", true)
             .maybeSingle(),
         ]);
@@ -381,9 +396,17 @@ export default {
         const defaultSender = String(
           settingsResult.data?.default_from_email ?? "",
         ).trim().toLowerCase();
+        const configuredSenders = Array.isArray(
+          settingsResult.data?.available_senders,
+        )
+          ? settingsResult.data.available_senders
+              .map((email: unknown) => String(email).trim().toLowerCase())
+              .filter(Boolean)
+          : [];
         const verifiedSenders = Array.from(
           new Set([
             ...extractVerifiedSenders(senders),
+            ...configuredSenders,
             ...(defaultSender ? [defaultSender] : []),
           ]),
         );
