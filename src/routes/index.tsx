@@ -3081,6 +3081,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
   const [token, setToken] = useState(""),
     [fromName, setFromName] = useState("Safar Iman"),
     [fromEmail, setFromEmail] = useState(""),
+    [availableSenders, setAvailableSenders] = useState<string[]>([]),
     [corporate, setCorporate] = useState(false),
     [verifyEmail, setVerifyEmail] = useState(""),
     [tokenConfigured, setTokenConfigured] = useState(false),
@@ -3118,6 +3119,11 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setTokenConfigured(Boolean(response.token_configured));
       setFromName(settings.default_from_name ?? "");
       setFromEmail(settings.default_from_email ?? "");
+      setAvailableSenders(
+        Array.isArray(settings.available_senders)
+          ? settings.available_senders
+          : [],
+      );
       setCorporate(Boolean(settings.corporate_mode));
       setSettingsUpdatedAt(settings.updated_at ?? null);
     } catch (e) {
@@ -3129,7 +3135,13 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setSettingsLoaded(true);
     }
   };
-  const senders = getVerifiedSenders(provider);
+  const senders = Array.from(
+    new Set([
+      ...getVerifiedSenders(provider),
+      ...availableSenders,
+      ...(fromEmail ? [fromEmail.toLowerCase()] : []),
+    ]),
+  );
   const refreshProvider = async () => {
     setSyncingSenders(true);
     try {
@@ -3177,6 +3189,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
         token,
         default_from_name: fromName,
         default_from_email: fromEmail,
+        available_senders: senders,
         corporate_mode: corporate,
       });
       setNotice({ success: r.success, message: r.message });
@@ -3277,25 +3290,21 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             </Field>
             <Field label="Sender aktif">
               <div className="flex gap-2">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    type="email"
-                    list="mailketing-senders"
-                    value={fromEmail}
-                    onChange={(e) => setFromEmail(e.target.value)}
-                    disabled={!admin || syncingSenders}
-                    placeholder={
-                      syncingSenders
-                        ? "Memuat sender..."
-                        : "Pilih atau ketik sender terverifikasi"
-                    }
-                  />
-                  <datalist id="mailketing-senders">
-                    {senders.map((email) => (
-                      <option key={email} value={email} />
-                    ))}
-                  </datalist>
-                </div>
+                <select
+                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                  value={fromEmail}
+                  onChange={(e) => setFromEmail(e.target.value)}
+                  disabled={!admin || syncingSenders}
+                >
+                  <option value="">
+                    {syncingSenders ? "Memuat sender..." : "Pilih sender aktif"}
+                  </option>
+                  {senders.map((email) => (
+                    <option key={email} value={email}>
+                      {email}
+                    </option>
+                  ))}
+                </select>
                 <Button
                   type="button"
                   size="sm"
@@ -3312,7 +3321,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                 </Button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Pilih dari daftar atau ketik alamat sender yang sudah terverifikasi di Mailketing. Sender ini otomatis menjadi pilihan utama di Kampanye.
+                Pilih sender yang akan digunakan sebagai pengirim utama di Kampanye.
               </p>
             </Field>
           </div>
