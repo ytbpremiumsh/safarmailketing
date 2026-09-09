@@ -5,6 +5,7 @@ import {
   BarChart3,
   CheckCircle2,
   Clock3,
+  Copy,
   FileSpreadsheet,
   History,
   KeyRound,
@@ -1396,7 +1397,50 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const moveSelectedContacts = async () => {
+  const copyContact = async (contact: Contact) => {
+    const fields =
+      String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
+      "noreply@ayopintar.com"
+        ? [
+            ["NIS", contact.custom_fields?.nis ?? contact.registration_code],
+            ["No", contact.custom_fields?.no],
+            ["Nama", contact.full_name ?? contact.first_name],
+            ["Email", contact.email],
+            ["Level", contact.custom_fields?.level],
+            ["Kelas", contact.custom_fields?.kelas],
+            ["Jurusan", contact.custom_fields?.jurusan],
+            ["Username CBT", contact.custom_fields?.username],
+            ["Password CBT", contact.custom_fields?.password],
+            ["Kategori", contact.category ?? "Umum"],
+          ]
+        : [
+            ["Kode Pendaftaran", contact.registration_code],
+            ["Nama", contact.full_name ?? contact.first_name],
+            ["Email", contact.email],
+            ["WhatsApp", contact.mobile],
+            ["Kategori", contact.category ?? "Umum"],
+          ];
+    const copiedText = fields
+      .map(([label, value]) => `${label}: ${String(value ?? "—")}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(copiedText);
+      setNotice({
+        success: true,
+        message: `Data ${contact.full_name ?? contact.first_name ?? contact.email} berhasil disalin.`,
+      });
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = copiedText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      textArea.remove();
+      setNotice({ success: true, message: "Data kontak berhasil disalin." });
+    }
+  };
+
+    const moveSelectedContacts = async () => {
     if (!selectedContactIds.length || !moveCategory.trim()) return;
     setBusy(true);
     try {
@@ -1850,6 +1894,9 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       </Td>
                       <Td>
                         <div className="flex gap-1">
+                          <Button type="button" size="sm" variant="outline" onClick={() => copyContact(c)}>
+                            <Copy /> Salin
+                          </Button>
                           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
                             <Pencil /> Edit
                           </Button>
@@ -1921,7 +1968,10 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       </dd>
                     </div>
                   </dl>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Button type="button" size="sm" variant="outline" onClick={() => copyContact(c)}>
+                      <Copy /> Salin
+                    </Button>
                     <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
                       <Pencil /> Edit
                     </Button>
