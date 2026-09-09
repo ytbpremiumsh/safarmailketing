@@ -1200,7 +1200,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     try {
       const parsed = parseCsv(bulkText);
       const firstIsHeader = isAyoPintar
-        ? normalizeHeader(parsed[0]?.[0]) === "nis"
+        ? ["nis", "email"].includes(normalizeHeader(parsed[0]?.[0]))
         : normalizeHeader(parsed[0]?.[0]) === "kode" &&
           normalizeHeader(parsed[0]?.[2]) === "email";
       const dataRows = firstIsHeader ? parsed.slice(1) : parsed;
@@ -1210,14 +1210,37 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
         .map((values, index) => {
           const lineNumber = index + (firstIsHeader ? 2 : 1);
           if (isAyoPintar) {
-            const [nis, no, fullName, rawEmail, level, kelas, jurusan, username, password] =
-              values.map((value) => String(value ?? "").trim());
-            const email = rawEmail.toLowerCase();
+            const cells = values.map((value) => String(value ?? "").trim());
+            const startsWithEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+              cells[0]?.toLowerCase() ?? "",
+            );
+            let nis = "";
+            let no = "";
+            let fullName = "";
+            let email = "";
+            let mobile = "";
+            let level = "";
+            let kelas = "";
+            let jurusan = "";
+            let username = "";
+            let password = "";
+
+            if (startsWithEmail && cells.length >= 8) {
+              [email, mobile, fullName, jurusan, level, kelas, username, password] =
+                cells;
+              email = email.toLowerCase();
+              nis = username;
+            } else {
+              [nis, no, fullName, email, level, kelas, jurusan, username, password] =
+                cells;
+              email = email.toLowerCase();
+            }
+
             if (
-              values.length < 9 ||
-              !nis || !no || !fullName ||
+              !fullName ||
               !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-              !level || !kelas || !jurusan || !username || !password
+              !username ||
+              !password
             ) {
               invalidLines.push(lineNumber);
               return null;
@@ -1225,14 +1248,23 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             if (seen.has(email)) return null;
             seen.add(email);
             return {
-              registration_code: nis,
+              registration_code: nis || username,
               full_name: fullName,
               first_name: fullName,
               email,
-              mobile: null,
+              mobile: mobile || null,
               category: importCategory.trim() || "Umum",
               workspace_sender: contactWorkspace,
-              custom_fields: { nis, no, level, kelas, jurusan, username, password },
+              custom_fields: {
+                nis,
+                no,
+                level,
+                kelas,
+                jurusan,
+                username,
+                password,
+                whatsapp: mobile,
+              },
               source: "bulk",
               created_by: userId,
             };
@@ -1328,7 +1360,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     try {
       const removedCategory = deleteCategory;
       await api(
-        `/rest/v1/contacts?category=eq.${encodeURIComponent(removedCategory)}`,
+        `/rest/v1/contacts?category=eq.${encodeURIComponent(removedCategory)}&workspace_sender=eq.${encodeURIComponent(contactWorkspace)}`,
         token,
         { method: "DELETE", headers: { Prefer: "return=minimal" } },
       );
@@ -1591,7 +1623,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             Contoh:{" "}
             <code>
               {isAyoPintar
-                ? "12345,1,Nama Peserta,nama@email.com,SMA,12,IPA,user.cbt,password123"
+                ? "Juga didukung: Email,WhatsApp,Nama,Jurusan,Level,Kelas,Username,Password"
                 : "HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672"}
             </code>
           </div>
@@ -1602,7 +1634,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             onChange={(e) => setBulkText(e.target.value)}
             placeholder={
               isAyoPintar
-                ? "12345,1,Nama Peserta,nama@email.com,SMA,12,IPA,user.cbt,password123"
+                ? "nama@email.com,081234567890,Nama Peserta,Ekonomi,Pelajar,Beasiswa,user.cbt,password123"
                 : "HXP-EFE8A860,tria Nurul kamilah,tnurulkamilah@gmail.com,085800685672\nHXP-ABC123,Nama Kedua,emailkedua@gmail.com,081234567890"
             }
           />
