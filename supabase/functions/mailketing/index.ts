@@ -955,22 +955,36 @@ export default {
               await new Promise((resolve) => setTimeout(resolve, 750));
             }
 
-            const { data: all } = await admin
-              .from("campaign_recipients")
-              .select("status")
-              .eq("campaign_id", campaign.id);
-            const sent =
-              all?.filter((recipient: any) =>
-                ["sent", "delivered"].includes(recipient.status),
-              ).length ?? 0;
-            const failed =
-              all?.filter((recipient: any) =>
-                ["failed", "bounced", "rejected"].includes(recipient.status),
-              ).length ?? 0;
-            const pending =
-              all?.filter((recipient: any) =>
-                ["pending", "processing"].includes(recipient.status),
-              ).length ?? 0;
+            // Gunakan COUNT di database. Mengambil semua status dengan select()
+            // dibatasi maksimum 1.000 baris oleh API dan membuat statistik kampanye
+            // besar kembali menjadi nol atau tidak lengkap.
+            const [
+              { count: sentCount, error: sentCountError },
+              { count: failedCount, error: failedCountError },
+              { count: pendingCount, error: pendingCountError },
+            ] = await Promise.all([
+              admin
+                .from("campaign_recipients")
+                .select("id", { count: "exact", head: true })
+                .eq("campaign_id", campaign.id)
+                .in("status", ["sent", "delivered"]),
+              admin
+                .from("campaign_recipients")
+                .select("id", { count: "exact", head: true })
+                .eq("campaign_id", campaign.id)
+                .in("status", ["failed", "bounced", "rejected"]),
+              admin
+                .from("campaign_recipients")
+                .select("id", { count: "exact", head: true })
+                .eq("campaign_id", campaign.id)
+                .in("status", ["pending", "processing"]),
+            ]);
+            const countError =
+              sentCountError ?? failedCountError ?? pendingCountError;
+            if (countError) throw countError;
+            const sent = sentCount ?? 0;
+            const failed = failedCount ?? 0;
+            const pending = pendingCount ?? 0;
             await admin
               .from("campaigns")
               .update({
