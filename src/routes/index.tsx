@@ -144,6 +144,8 @@ type Campaign = {
   clicked_count?: number;
   scheduled_at?: string;
   created_at: string;
+  updated_at?: string;
+  completed_at?: string;
 };
 type View =
   | "dashboard"
@@ -540,6 +542,36 @@ function Dashboard({
       window.clearInterval(interval);
     };
   }, [token, profile?.role]);
+
+  const hasRunningCampaign = campaigns.some((campaign) =>
+    ["processing", "scheduled"].includes(campaign.status),
+  );
+  useEffect(() => {
+    if (!hasRunningCampaign) return;
+    let refreshing = false;
+    const refreshProgress = async () => {
+      if (refreshing || document.visibilityState !== "visible") return;
+      refreshing = true;
+      try {
+        const rows = await api(
+          "/rest/v1/campaigns?select=*&order=created_at.desc&limit=100",
+          token,
+        );
+        setCampaigns(Array.isArray(rows) ? rows : []);
+      } catch {
+        // Pertahankan data terakhir; percobaan berikutnya berjalan otomatis.
+      } finally {
+        refreshing = false;
+      }
+    };
+    const interval = window.setInterval(refreshProgress, 15000);
+    window.addEventListener("focus", refreshProgress);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshProgress);
+    };
+  }, [token, hasRunningCampaign]);
+
   const syncInFlight = useRef(false);
   const sync = async (options: { silent?: boolean } = {}) => {
     if (syncInFlight.current) return;
@@ -4314,10 +4346,154 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
   );
 }
 
+function formatRemainingTime(milliseconds: number) {
+  const totalSeconds = Math.max(1, Math.ceil(milliseconds / 1000));
+  if (totalSeconds < 60) return "kurang dari 1 menit";
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  if (totalMinutes < 60) return totalMinutes + " menit";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24)
+    return hours + " jam" + (minutes ? " " + minutes + " menit" : "");
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return days + " hari" + (remainingHours ? " " + remainingHours + " jam" : "");
+}
+
+function CampaignProgress({
+  campaign,
+  now,
+}: {
+  campaign: Campaign;
+  now: number;
+}) {
+  const total = Math.max(Number(campaign.total_count) || 0, 0);
+  const sent = Math.max(Number(campaign.sent_count) || 0, 0);
+  const failed = Math.max(Number(campaign.failed_count) || 0, 0);
+  const processed = Math.min(sent + failed, total || sent + failed);
+  const percentage = total
+    ? Math.min(100, Math.round((processed / total) * 100))
+    : ["completed", "partial"].includes(campaign.status)
+      ? 100
+      : 0;
+  const remaining = Math.max(total - processed, 0);
+  const terminal = ["completed", "partial", "failed", "cancelled"].includes(
+    campaign.status,
+  );
+
+  let estimate = "Menghitung estimasi...";
+  if (campaign.status === "paused") {
+    estimate = "Dijeda · " + remaining + " penerima tersisa";
+  } else if (campaign.status === "cancelled") {
+    estimate = "Pengiriman dibatalkan";
+  } else if (campaign.status === "failed") {
+    estimate = "Pengiriman berhenti karena gagal";
+  } else if (terminal || percentage >= 100) {
+    estimate = campaign.completed_at
+      ? "Selesai " +
+        new Date(campaign.completed_at).toLocaleString("id-ID", {
+          dateStyle: "short",
+          timeStyle: "short",
+        })
+      : "Pengiriman selesai";
+  } else {
+    const scheduledTime = campaign.scheduled_at
+      ? new Date(campaign.scheduled_at).getTime()
+      : 0;
+    if (campaign.status === "scheduled" && scheduledTime > now) {
+      estimate =
+        "Mulai " +
+        new Date(scheduledTime).toLocaleString("id-ID", {
+          dateStyle: "short",
+          timeStyle: "short",
+        });
+    } else if (processed > 0 && remaining > 0) {
+      const createdTime = new Date(campaign.created_at).getTime();
+      const startTime =
+        scheduledTime > 0 && scheduledTime <= now
+          ? scheduledTime
+          : createdTime;
+      const elapsed = Math.max(now - startTime, 1000);
+      const millisecondsPerRecipient = elapsed / processed;
+      const remainingMilliseconds = millisecondsPerRecipient * remaining;
+      if (
+        Number.isFinite(remainingMilliseconds) &&
+        remainingMilliseconds > 0 &&
+        remainingMilliseconds < 30 * 24 * 60 * 60 * 1000
+      ) {
+        const finishAt = new Date(now + remainingMilliseconds);
+        estimate =
+          "Perkiraan selesai " +
+          finishAt.toLocaleString("id-ID", {
+            dateStyle:
+              finishAt.toDateString() === new Date(now).toDateString()
+                ? undefined
+                : "short",
+            timeStyle: "short",
+          }) +
+          " · ±" +
+          formatRemainingTime(remainingMilliseconds) +
+          " lagi";
+      }
+    }
+  }
+
+  return (
+    <div className="min-w-[230px] space-y-2">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold text-slate-700">
+          {percentage}% selesai
+        </span>
+        <span className="text-slate-500">
+          {processed}/{total} diproses
+        </span>
+      </div>
+      <div
+        className="h-2.5 overflow-hidden rounded-full bg-slate-100"
+        role="progressbar"
+        aria-label={"Progres kampanye " + campaign.name}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percentage}
+      >
+        <div
+          className={
+            "h-full rounded-full transition-all duration-700 " +
+            (campaign.status === "failed"
+              ? "bg-red-500"
+              : campaign.status === "paused"
+                ? "bg-amber-500"
+                : "bg-gradient-to-r from-emerald-500 to-teal-500")
+          }
+          style={{ width: percentage + "%" }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+        <span className="font-medium text-emerald-700">
+          {sent} berhasil
+        </span>
+        <span className={failed ? "font-medium text-red-600" : "text-slate-400"}>
+          {failed} gagal
+        </span>
+        <span className="text-slate-500">{remaining} tersisa</span>
+      </div>
+      <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
+        <Clock3 size={13} className="shrink-0" />
+        {estimate}
+      </p>
+    </div>
+  );
+}
+
 function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(interval);
+  }, []);
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
-      <table className="min-w-[980px] w-full text-sm">
+      <table className="min-w-[1120px] w-full text-sm">
         <thead>
           <tr className="border-b bg-slate-50 text-left">
             <Th>Kampanye</Th>
@@ -4343,10 +4519,7 @@ function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
                   </span>
                 </Td>
                 <Td>
-                  {campaign.sent_count}/{campaign.total_count}
-                  {campaign.failed_count > 0 && (
-                    <span className="ml-1 text-red-600">({campaign.failed_count} gagal)</span>
-                  )}
+                  <CampaignProgress campaign={campaign} now={now} />
                 </Td>
                 <Td>
                   {campaign.opened_count ?? 0}
