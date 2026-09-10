@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 const MAILKETING_URL = "https://stackapi.mailketing.co.id/api/v2";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-queue-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -24,6 +24,24 @@ const normalizeToken = (value: unknown) => {
     catch { token = token.replace(/^.*api_token=/i, "").split(/[&#\s]/)[0]; }
   }
   return token.trim();
+};
+
+const sha256 = async (value: string) => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const safeEqual = (left: string, right: string) => {
+  if (!left || left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index++)
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return difference === 0;
 };
 
 const signTracking = async (value: string, secret: string) => {
@@ -196,25 +214,82 @@ const extractVerifiedSenders = (payload: any): string[] => {
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-    if (!bearer) return json({ success: false, message: "Sesi login tidak ditemukan." }, 401);
     const url = Deno.env.get("SUPABASE_URL")!;
     const secretMap = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
     const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? secretMap.default;
-    const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: authData, error: authError } = await admin.auth.getUser(bearer);
-    if (authError || !authData.user) return json({ success: false, message: "Sesi tidak valid atau sudah berakhir." }, 401);
-    const userId = authData.user.id;
-      const { data: profile } = await admin
-        .from("profiles").select("role,active").eq("id", userId).single();
-      if (!profile?.active) return json({ success: false, message: "Akun tidak aktif." }, 403);
+    const admin = createClient(url, secret, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const input = await request.json().catch(() => ({}));
+    const action = String(input.action ?? "");
+    const queueKey = request.headers.get("x-queue-key") ?? "";
+    let backgroundWorker = false;
+    let workerConfig: any = null;
+    let userId: string | null = null;
+    let profile: { role: string; active: boolean } | null = null;
 
-      const input = await request.json().catch(() => ({}));
-      const action = String(input.action ?? "");
-      const adminOnly = ["get-settings", "save-settings", "retry", "process-queue", "pause-campaign", "resume-campaign", "cancel-campaign", "list-users", "create-user", "update-user"];
-      if (adminOnly.includes(action) && profile.role !== "admin") {
-        return json({ success: false, message: "Akses khusus admin." }, 403);
+    if (action === "process-queue" && queueKey) {
+      const { data: config } = await admin
+        .from("queue_worker_config")
+        .select("*")
+        .eq("id", true)
+        .maybeSingle();
+      const suppliedHash = await sha256(queueKey);
+      if (
+        !config?.active ||
+        !safeEqual(suppliedHash, String(config?.secret_hash ?? ""))
+      ) {
+        return json({ success: false, message: "Kunci worker tidak valid." }, 401);
       }
+      backgroundWorker = true;
+      workerConfig = config;
+      profile = { role: "admin", active: true };
+    } else {
+      const bearer = request.headers
+        .get("Authorization")
+        ?.replace(/^Bearer\s+/i, "");
+      if (!bearer)
+        return json(
+          { success: false, message: "Sesi login tidak ditemukan." },
+          401,
+        );
+      const { data: authData, error: authError } =
+        await admin.auth.getUser(bearer);
+      if (authError || !authData.user)
+        return json(
+          { success: false, message: "Sesi tidak valid atau sudah berakhir." },
+          401,
+        );
+      userId = authData.user.id;
+      const { data: userProfile } = await admin
+        .from("profiles")
+        .select("role,active")
+        .eq("id", userId)
+        .single();
+      profile = userProfile;
+      if (!profile?.active)
+        return json({ success: false, message: "Akun tidak aktif." }, 403);
+    }
+
+    const adminOnly = [
+      "get-settings",
+      "save-settings",
+      "retry",
+      "process-queue",
+      "pause-campaign",
+      "resume-campaign",
+      "cancel-campaign",
+      "list-users",
+      "create-user",
+      "update-user",
+    ];
+    if (
+      adminOnly.includes(action) &&
+      !backgroundWorker &&
+      profile?.role !== "admin"
+    ) {
+      return json({ success: false, message: "Akses khusus admin." }, 403);
+    }
 
       if (action === "get-settings") {
         const [{ data: settings, error: settingsError }, { data: storedToken, error: tokenError }] = await Promise.all([
@@ -574,111 +649,405 @@ export default {
         });
       }
       if (action === "process-queue") {
-        const now = new Date().toISOString();
-        await admin.from("campaigns").update({ status: "processing" }).eq("status", "scheduled").lte("scheduled_at", now);
-        const { data: campaigns } = await admin.from("campaigns").select("*").eq("status", "processing").limit(5);
-        let processed = 0;
-        for (const campaign of campaigns ?? []) {
-          const { data: recipients } = await admin.from("campaign_recipients").select("*").eq("campaign_id", campaign.id).eq("status", "pending").order("updated_at").limit(5);
-          for (const recipient of recipients ?? []) {
-            const { data: claimed } = await admin
-              .from("campaign_recipients")
-              .update({ status: "processing", attempts: recipient.attempts + 1, updated_at: now })
-              .eq("id", recipient.id)
-              .eq("status", "pending")
-              .select("id")
-              .maybeSingle();
-            if (!claimed) continue;
-            const variables = { email: recipient.email, ...(recipient.variables ?? {}) };
-            const personalizedContent = interpolate(campaign.html_content, variables);
-            const trackedContent = await addTracking(
-              personalizedContent,
-              campaign.id,
-              recipient.id,
-              url,
-              secret,
-            );
-            const sendPayload = {
-              from_name: campaign.from_name,
-              from_email: campaign.from_email,
-              subject: interpolate(campaign.subject, variables),
-              recipient: recipient.email,
-              ...(campaign.attachments?.[0] ? { attach1: campaign.attachments[0] } : {}),
-              ...(campaign.attachments?.[1] ? { attach2: campaign.attachments[1] } : {}),
-              ...(campaign.attachments?.[2] ? { attach3: campaign.attachments[2] } : {}),
-            };
-            let response = await sendEmail({
-              ...sendPayload,
-              content: trackedContent,
-            });
-            let trackingFallback = false;
-            if (
-              !response.success &&
-              /internal server error/i.test(String(response.message ?? ""))
-            ) {
-              console.warn("Mailketing rejected tracked HTML; retrying original content", {
-                campaign_id: campaign.id,
-                recipient_id: recipient.id,
-                provider_status: response.http_status,
-              });
-              response = await sendEmail({
-                ...sendPayload,
-                content: personalizedContent,
-              });
-              trackingFallback = Boolean(response.success);
-            }
-            const providerMessage = trackingFallback
-              ? `${response.message ?? "Email queued successfully"} (tracking fallback)`
-              : response.message;
-            const responseText = String(response.message ?? "");
-            const isBounce =
-              !response.success &&
-              /bounce|bad address|invalid (recipient|email)|mailbox (not found|unavailable)|user unknown|domain not found/i.test(responseText);
-            const isRejected =
-              !response.success &&
-              !isBounce &&
-              Number(response.http_status) >= 400 &&
-              Number(response.http_status) < 500 &&
-              Number(response.http_status) !== 429;
-            const failedStatus = isBounce ? "bounced" : isRejected ? "rejected" : "failed";
-            const eventTime = new Date().toISOString();
-            await admin.from("campaign_recipients").update(response.success ? {
-              status: "sent",
-              message_id: response.data?.message_id ?? response.message_id ?? null,
-              provider_message: providerMessage,
-              provider_response: response,
-              provider_status_code: response.http_status ?? null,
-              last_error: null,
-              sent_at: eventTime,
-              queued_at: eventTime,
-              updated_at: eventTime,
-            } : {
-              status: failedStatus,
-              last_error: response.message ?? "Pengiriman ditolak Mailketing.",
-              provider_message: providerMessage,
-              provider_response: response,
-              provider_status_code: response.http_status ?? null,
-              bounced_at: isBounce ? eventTime : null,
-              rejected_at: isRejected ? eventTime : null,
-              updated_at: eventTime,
-            }).eq("id", recipient.id);
-            if (isBounce && recipient.contact_id) {
-              await admin.from("contacts").update({
-                status: "bounced",
-                bounce_count: 1,
-                updated_at: eventTime,
-              }).eq("id", recipient.contact_id);
-            }
-            processed++;
-            await new Promise((resolve) => setTimeout(resolve, 750));
-          }
-          const { data: all } = await admin.from("campaign_recipients").select("status").eq("campaign_id", campaign.id);
-          const sent = all?.filter((r: any) => ["sent", "delivered"].includes(r.status)).length ?? 0;
-          const failed = all?.filter((r: any) => ["failed", "bounced", "rejected"].includes(r.status)).length ?? 0;
-          const pending = all?.filter((r: any) => ["pending", "processing"].includes(r.status)).length ?? 0;
-          await admin.from("campaigns").update({ sent_count: sent, failed_count: failed, status: pending ? "processing" : failed ? (sent ? "partial" : "failed") : "completed", completed_at: pending ? null : new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", campaign.id);
+        const startedAt = new Date();
+        const now = startedAt.toISOString();
+        if (!workerConfig) {
+          const { data: config } = await admin
+            .from("queue_worker_config")
+            .select("*")
+            .eq("id", true)
+            .maybeSingle();
+          workerConfig = config;
         }
-        return json({ success: true, processed, message: `${processed} email diproses.` });
+        if (!workerConfig?.active)
+          return json({
+            success: true,
+            processed: 0,
+            message: "Worker background sedang nonaktif.",
+          });
+
+        const batchSize = Math.min(
+          50,
+          Math.max(1, Number(workerConfig.batch_size) || 20),
+        );
+        const maxAttempts = Math.min(
+          10,
+          Math.max(1, Number(workerConfig.max_attempts) || 3),
+        );
+        const staleBefore = new Date(
+          startedAt.getTime() - 10 * 60 * 1000,
+        ).toISOString();
+        const { data: run } = await admin
+          .from("queue_worker_runs")
+          .insert({ started_at: now, status: "running" })
+          .select("id")
+          .single();
+
+        await admin
+          .from("queue_worker_config")
+          .update({
+            last_started_at: now,
+            last_error: null,
+            updated_at: now,
+          })
+          .eq("id", true);
+
+        try {
+          await admin
+            .from("campaign_recipients")
+            .update({
+              status: "pending",
+              next_attempt_at: now,
+              provider_message: "Antrean macet dipulihkan otomatis.",
+              updated_at: now,
+            })
+            .eq("status", "processing")
+            .lt("updated_at", staleBefore)
+            .lt("attempts", maxAttempts);
+
+          await admin
+            .from("campaign_recipients")
+            .update({
+              status: "failed",
+              last_error: "Batas percobaan worker telah tercapai.",
+              updated_at: now,
+            })
+            .eq("status", "processing")
+            .lt("updated_at", staleBefore)
+            .gte("attempts", maxAttempts);
+
+          await admin
+            .from("campaigns")
+            .update({ status: "processing", updated_at: now })
+            .eq("status", "scheduled")
+            .lte("scheduled_at", now);
+
+          const { data: campaigns } = await admin
+            .from("campaigns")
+            .select("*")
+            .eq("status", "processing")
+            .order("created_at")
+            .limit(10);
+
+          let processed = 0;
+          let sentThisRun = 0;
+          let retryThisRun = 0;
+          let failedThisRun = 0;
+
+          for (const campaign of campaigns ?? []) {
+            const capacity = batchSize - processed;
+            if (capacity <= 0) break;
+            const { data: candidates } = await admin
+              .from("campaign_recipients")
+              .select("*")
+              .eq("campaign_id", campaign.id)
+              .eq("status", "pending")
+              .order("updated_at")
+              .limit(Math.max(capacity * 3, capacity));
+            const recipients = (candidates ?? [])
+              .filter(
+                (recipient: any) =>
+                  !recipient.next_attempt_at ||
+                  new Date(recipient.next_attempt_at).getTime() <=
+                    startedAt.getTime(),
+              )
+              .slice(0, capacity);
+
+            for (const recipient of recipients) {
+              const attempt = Number(recipient.attempts ?? 0) + 1;
+              const { data: claimed } = await admin
+                .from("campaign_recipients")
+                .update({
+                  status: "processing",
+                  attempts: attempt,
+                  next_attempt_at: null,
+                  updated_at: now,
+                })
+                .eq("id", recipient.id)
+                .eq("status", "pending")
+                .select("id")
+                .maybeSingle();
+              if (!claimed) continue;
+
+              const variables = {
+                email: recipient.email,
+                ...(recipient.variables ?? {}),
+              };
+              const personalizedContent = interpolate(
+                campaign.html_content,
+                variables,
+              );
+              const trackedContent = await addTracking(
+                personalizedContent,
+                campaign.id,
+                recipient.id,
+                url,
+                secret,
+              );
+              const stableMessageId =
+                recipient.message_id || String(recipient.id);
+              const sendPayload = {
+                from_name: campaign.from_name,
+                from_email: campaign.from_email,
+                subject: interpolate(campaign.subject, variables),
+                recipient: recipient.email,
+                message_id: stableMessageId,
+                ...(campaign.attachments?.[0]
+                  ? { attach1: campaign.attachments[0] }
+                  : {}),
+                ...(campaign.attachments?.[1]
+                  ? { attach2: campaign.attachments[1] }
+                  : {}),
+                ...(campaign.attachments?.[2]
+                  ? { attach3: campaign.attachments[2] }
+                  : {}),
+              };
+
+              let response: any;
+              try {
+                response = await sendEmail({
+                  ...sendPayload,
+                  content: trackedContent,
+                });
+              } catch (error) {
+                response = {
+                  success: false,
+                  http_status: 0,
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : "Koneksi Mailketing terputus.",
+                  transport: "worker-network-error",
+                };
+              }
+
+              let trackingFallback = false;
+              if (
+                !response.success &&
+                /internal server error/i.test(
+                  String(response.message ?? ""),
+                )
+              ) {
+                try {
+                  response = await sendEmail({
+                    ...sendPayload,
+                    content: personalizedContent,
+                  });
+                  trackingFallback = Boolean(response.success);
+                } catch (error) {
+                  response = {
+                    success: false,
+                    http_status: 0,
+                    message:
+                      error instanceof Error
+                        ? error.message
+                        : "Koneksi Mailketing terputus.",
+                    transport: "worker-network-error",
+                  };
+                }
+              }
+
+              const providerMessage = trackingFallback
+                ? `${response.message ?? "Email queued successfully"} (tracking fallback)`
+                : response.message;
+              const responseText = String(response.message ?? "");
+              const statusCode = Number(response.http_status ?? 0);
+              const isBounce =
+                !response.success &&
+                /bounce|bad address|invalid (recipient|email)|mailbox (not found|unavailable)|user unknown|domain not found/i.test(
+                  responseText,
+                );
+              const isRejected =
+                !response.success &&
+                !isBounce &&
+                statusCode >= 400 &&
+                statusCode < 500 &&
+                statusCode !== 429;
+              const isTemporary =
+                !response.success &&
+                !isBounce &&
+                !isRejected &&
+                attempt < maxAttempts &&
+                (statusCode === 0 ||
+                  statusCode === 429 ||
+                  statusCode >= 500 ||
+                  /timeout|temporar|network|connection|try again/i.test(
+                    responseText,
+                  ));
+              const eventTime = new Date().toISOString();
+
+              if (response.success) {
+                await admin
+                  .from("campaign_recipients")
+                  .update({
+                    status: "sent",
+                    message_id:
+                      response.data?.message_id ??
+                      response.message_id ??
+                      stableMessageId,
+                    provider_message: providerMessage,
+                    provider_response: response,
+                    provider_status_code: response.http_status ?? null,
+                    last_error: null,
+                    sent_at: eventTime,
+                    queued_at: eventTime,
+                    next_attempt_at: null,
+                    updated_at: eventTime,
+                  })
+                  .eq("id", recipient.id);
+                sentThisRun++;
+              } else if (isTemporary) {
+                const retryAt = new Date(
+                  Date.now() + Math.pow(2, attempt - 1) * 60 * 1000,
+                ).toISOString();
+                await admin
+                  .from("campaign_recipients")
+                  .update({
+                    status: "pending",
+                    message_id: stableMessageId,
+                    last_error: responseText || "Gangguan sementara.",
+                    provider_message:
+                      (providerMessage || "Gangguan sementara") +
+                      " · dicoba ulang otomatis",
+                    provider_response: response,
+                    provider_status_code: response.http_status ?? null,
+                    next_attempt_at: retryAt,
+                    updated_at: eventTime,
+                  })
+                  .eq("id", recipient.id);
+                retryThisRun++;
+              } else {
+                const failedStatus = isBounce
+                  ? "bounced"
+                  : isRejected
+                    ? "rejected"
+                    : "failed";
+                await admin
+                  .from("campaign_recipients")
+                  .update({
+                    status: failedStatus,
+                    message_id: stableMessageId,
+                    last_error:
+                      responseText || "Pengiriman ditolak Mailketing.",
+                    provider_message: providerMessage,
+                    provider_response: response,
+                    provider_status_code: response.http_status ?? null,
+                    bounced_at: isBounce ? eventTime : null,
+                    rejected_at: isRejected ? eventTime : null,
+                    next_attempt_at: null,
+                    updated_at: eventTime,
+                  })
+                  .eq("id", recipient.id);
+                if (isBounce && recipient.contact_id) {
+                  await admin
+                    .from("contacts")
+                    .update({
+                      status: "bounced",
+                      bounce_count: 1,
+                      updated_at: eventTime,
+                    })
+                    .eq("id", recipient.contact_id);
+                }
+                failedThisRun++;
+              }
+
+              processed++;
+              await new Promise((resolve) => setTimeout(resolve, 750));
+            }
+
+            const { data: all } = await admin
+              .from("campaign_recipients")
+              .select("status")
+              .eq("campaign_id", campaign.id);
+            const sent =
+              all?.filter((recipient: any) =>
+                ["sent", "delivered"].includes(recipient.status),
+              ).length ?? 0;
+            const failed =
+              all?.filter((recipient: any) =>
+                ["failed", "bounced", "rejected"].includes(recipient.status),
+              ).length ?? 0;
+            const pending =
+              all?.filter((recipient: any) =>
+                ["pending", "processing"].includes(recipient.status),
+              ).length ?? 0;
+            await admin
+              .from("campaigns")
+              .update({
+                sent_count: sent,
+                failed_count: failed,
+                status: pending
+                  ? "processing"
+                  : failed
+                    ? sent
+                      ? "partial"
+                      : "failed"
+                    : "completed",
+                completed_at: pending ? null : new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", campaign.id);
+          }
+
+          const completedAt = new Date().toISOString();
+          await admin
+            .from("queue_worker_config")
+            .update({
+              last_completed_at: completedAt,
+              last_processed: processed,
+              last_error: null,
+              updated_at: completedAt,
+            })
+            .eq("id", true);
+          if (run?.id) {
+            await admin
+              .from("queue_worker_runs")
+              .update({
+                completed_at: completedAt,
+                processed_count: processed,
+                sent_count: sentThisRun,
+                retry_count: retryThisRun,
+                failed_count: failedThisRun,
+                status: "completed",
+              })
+              .eq("id", run.id);
+          }
+          return json({
+            success: true,
+            background: backgroundWorker,
+            processed,
+            sent: sentThisRun,
+            retries: retryThisRun,
+            failed: failedThisRun,
+            message: `${processed} email diproses oleh worker background.`,
+          });
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Worker gagal.";
+          const completedAt = new Date().toISOString();
+          await admin
+            .from("queue_worker_config")
+            .update({
+              last_completed_at: completedAt,
+              last_error: errorMessage,
+              updated_at: completedAt,
+            })
+            .eq("id", true);
+          if (run?.id) {
+            await admin
+              .from("queue_worker_runs")
+              .update({
+                completed_at: completedAt,
+                status: "failed",
+                error_message: errorMessage,
+              })
+              .eq("id", run.id);
+          }
+          return json(
+            { success: false, message: errorMessage, background: true },
+            500,
+          );
+        }
       }
       return json({ success: false, message: "Aksi tidak dikenali." }, 400);
     
