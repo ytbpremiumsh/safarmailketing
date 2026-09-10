@@ -525,8 +525,10 @@ function Dashboard({
   const hasRunningCampaign = campaigns.some((campaign) =>
     ["processing", "scheduled"].includes(campaign.status),
   );
+  const shouldRefreshCampaignStats =
+    hasRunningCampaign || view === "history" || view === "dashboard";
   useEffect(() => {
-    if (!hasRunningCampaign) return;
+    if (!shouldRefreshCampaignStats) return;
     let refreshing = false;
     const refreshProgress = async () => {
       if (refreshing || document.visibilityState !== "visible") return;
@@ -549,7 +551,7 @@ function Dashboard({
       window.clearInterval(interval);
       window.removeEventListener("focus", refreshProgress);
     };
-  }, [token, hasRunningCampaign]);
+  }, [token, shouldRefreshCampaignStats]);
 
   const syncInFlight = useRef(false);
   const sync = async (options: { silent?: boolean } = {}) => {
@@ -3086,8 +3088,6 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     setBusyId(campaign.id);
     try {
       const response = await invoke({ action, campaign_id: campaign.id });
-      if (response.success && ["retry", "resume-campaign"].includes(action))
-        await invoke({ action: "process-queue" });
       await reload();
       setNotice({ success: response.success, message: response.message });
     } catch (e) {
