@@ -8,8 +8,11 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ExternalLink,
   FileSpreadsheet,
+  FolderOpen,
   History,
+  ImageIcon,
   KeyRound,
   LayoutTemplate,
   Loader2,
@@ -143,7 +146,13 @@ type Campaign = {
   created_at: string;
 };
 type View =
-  "dashboard" | "compose" | "contacts" | "templates" | "history" | "settings";
+  | "dashboard"
+  | "compose"
+  | "contacts"
+  | "templates"
+  | "media"
+  | "history"
+  | "settings";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -604,6 +613,7 @@ function Dashboard({
     { id: "compose" as View, label: "Kampanye", icon: Send },
     { id: "contacts" as View, label: "Kontak", icon: Users },
     { id: "templates" as View, label: "Template", icon: LayoutTemplate },
+    { id: "media" as View, label: "Media", icon: FolderOpen },
     { id: "history" as View, label: "Riwayat", icon: History },
     { id: "settings" as View, label: "Pengaturan", icon: Settings },
   ];
@@ -674,6 +684,13 @@ function Dashboard({
           invoke={invoke}
           reload={load}
           sync={sync}
+          setNotice={setNotice}
+        />
+      )}
+      {view === "media" && (
+        <MediaView
+          token={token}
+          userId={session.user.id}
           setNotice={setNotice}
         />
       )}
@@ -783,7 +800,7 @@ function Dashboard({
         <main className="min-w-0 space-y-5 pb-24 lg:pb-8">{content}</main>
       </div>
 
-      <nav className="fixed inset-x-2 bottom-2 z-40 grid grid-cols-6 rounded-2xl border border-white/80 bg-white/95 p-1.5 shadow-2xl shadow-slate-400/30 backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-2 bottom-2 z-40 grid grid-cols-7 rounded-2xl border border-white/80 bg-white/95 p-1.5 shadow-2xl shadow-slate-400/30 backdrop-blur-xl lg:hidden">
         {nav.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -3503,6 +3520,412 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
+
+
+type MediaAsset = {
+  id: string;
+  name: string;
+  storage_path: string;
+  public_url: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  created_by: string;
+};
+
+function MediaView({
+  token,
+  userId,
+  setNotice,
+}: {
+  token: string;
+  userId: string;
+  setNotice: (notice: Notice | null) => void;
+}) {
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const encodeStoragePath = (path: string) =>
+    path.split("/").map(encodeURIComponent).join("/");
+
+  const loadMedia = async () => {
+    setLoading(true);
+    try {
+      const rows = await api(
+        "/rest/v1/media_assets?select=*&order=created_at.desc&limit=1000",
+        token,
+      );
+      setAssets(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      setNotice({
+        success: false,
+        message:
+          error instanceof Error ? error.message : "Media gagal dimuat.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMedia();
+  }, []);
+
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length) return;
+    const allowed = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/svg+xml",
+      "application/pdf",
+    ]);
+    const invalid = files.find(
+      (file) => !allowed.has(file.type) || file.size > 20 * 1024 * 1024,
+    );
+    if (invalid) {
+      setNotice({
+        success: false,
+        message:
+          "File " +
+          invalid.name +
+          " tidak didukung atau melebihi batas 20 MB.",
+      });
+      return;
+    }
+
+    setUploading(true);
+    setNotice(null);
+    let uploaded = 0;
+    try {
+      for (const file of files) {
+        const safeName =
+          file.name.replace(/[^a-zA-Z0-9._-]+/g, "-") || "media";
+        const path =
+          userId +
+          "/" +
+          Date.now() +
+          "-" +
+          crypto.randomUUID().slice(0, 8) +
+          "-" +
+          safeName;
+        const encodedPath = encodeStoragePath(path);
+        const uploadResponse = await fetch(
+          SB_URL + "/storage/v1/object/media/" + encodedPath,
+          {
+            method: "POST",
+            headers: {
+              apikey: SB_KEY,
+              Authorization: "Bearer " + token,
+              "Content-Type": file.type,
+              "x-upsert": "false",
+            },
+            body: file,
+          },
+        );
+        if (!uploadResponse.ok) {
+          const body = await uploadResponse.json().catch(() => ({}));
+          throw new Error(
+            body.message || body.error || "Upload " + file.name + " gagal.",
+          );
+        }
+
+        const publicUrl =
+          SB_URL + "/storage/v1/object/public/media/" + encodedPath;
+        try {
+          await api("/rest/v1/media_assets", token, {
+            method: "POST",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              name: file.name,
+              storage_path: path,
+              public_url: publicUrl,
+              mime_type: file.type,
+              size_bytes: file.size,
+              created_by: userId,
+            }),
+          });
+        } catch (error) {
+          await fetch(SB_URL + "/storage/v1/object/media/" + encodedPath, {
+            method: "DELETE",
+            headers: {
+              apikey: SB_KEY,
+              Authorization: "Bearer " + token,
+            },
+          }).catch(() => undefined);
+          throw error;
+        }
+        uploaded += 1;
+      }
+      setNotice({
+        success: true,
+        message: uploaded + " media berhasil disimpan dan URL siap digunakan.",
+      });
+      await loadMedia();
+    } catch (error) {
+      setNotice({
+        success: false,
+        message:
+          (error instanceof Error ? error.message : "Upload media gagal.") +
+          (uploaded ? " " + uploaded + " file sudah berhasil disimpan." : ""),
+      });
+      await loadMedia();
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const copyUrl = async (asset: MediaAsset) => {
+    try {
+      await navigator.clipboard.writeText(asset.public_url);
+      setCopiedId(asset.id);
+      setNotice({ success: true, message: "URL media berhasil disalin." });
+      window.setTimeout(() => setCopiedId(null), 1800);
+    } catch {
+      setNotice({
+        success: false,
+        message: "URL tidak dapat disalin otomatis. Salin dari kolom URL.",
+      });
+    }
+  };
+
+  const removeMedia = async (asset: MediaAsset) => {
+    if (!window.confirm('Hapus media "' + asset.name + '" secara permanen?'))
+      return;
+    try {
+      const storageResponse = await fetch(
+        SB_URL +
+          "/storage/v1/object/media/" +
+          encodeStoragePath(asset.storage_path),
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SB_KEY,
+            Authorization: "Bearer " + token,
+          },
+        },
+      );
+      if (!storageResponse.ok) {
+        const body = await storageResponse.json().catch(() => ({}));
+        throw new Error(body.message || body.error || "File gagal dihapus.");
+      }
+      await api(
+        "/rest/v1/media_assets?id=eq." + encodeURIComponent(asset.id),
+        token,
+        { method: "DELETE" },
+      );
+      setAssets((current) => current.filter((item) => item.id !== asset.id));
+      setNotice({ success: true, message: "Media berhasil dihapus." });
+    } catch (error) {
+      setNotice({
+        success: false,
+        message:
+          error instanceof Error ? error.message : "Media gagal dihapus.",
+      });
+    }
+  };
+
+  const filtered = assets.filter((asset) => {
+    const needle = query.trim().toLowerCase();
+    return (
+      !needle ||
+      asset.name.toLowerCase().includes(needle) ||
+      asset.mime_type.toLowerCase().includes(needle)
+    );
+  });
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(1) + " MB";
+  };
+
+  return (
+    <>
+      <PageHeading
+        title="Media"
+        description="Simpan gambar atau PDF dan gunakan URL-nya pada template email."
+        icon={<FolderOpen />}
+      />
+      <Card>
+        <CardContent className="space-y-4 p-5">
+          <div
+            className={
+              "rounded-3xl border-2 border-dashed p-6 text-center transition " +
+              (dragging
+                ? "border-emerald-500 bg-emerald-50"
+                : "border-slate-200 bg-slate-50/70 hover:border-emerald-300")
+            }
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              uploadFiles(Array.from(event.dataTransfer.files));
+            }}
+          >
+            <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+              {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+            </span>
+            <h2 className="mt-3 font-semibold">Unggah media</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Tarik file ke sini atau pilih beberapa file sekaligus. JPG, PNG,
+              WebP, GIF, SVG, dan PDF; maksimal 20 MB per file.
+            </p>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,application/pdf"
+              className="hidden"
+              onChange={(event) =>
+                uploadFiles(Array.from(event.target.files ?? []))
+              }
+            />
+            <Button
+              className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              {uploading ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Upload />
+              )}
+              {uploading ? "Mengunggah..." : "Pilih File"}
+            </Button>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            URL media bersifat publik agar dapat dimuat oleh penerima email.
+            Jangan unggah dokumen rahasia atau data pribadi.
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Pustaka Media</CardTitle>
+            <p className="mt-1 text-sm text-slate-500">
+              {assets.length} file tersimpan
+            </p>
+          </div>
+          <div className="relative w-full sm:max-w-sm">
+            <Search
+              size={17}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Cari nama atau jenis file..."
+              className="pl-9"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="grid min-h-40 place-items-center">
+              <Loader2 className="animate-spin text-emerald-600" />
+            </div>
+          ) : filtered.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((asset) => (
+                <article
+                  key={asset.id}
+                  className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="grid aspect-[16/9] place-items-center overflow-hidden bg-slate-100">
+                    {asset.mime_type.startsWith("image/") ? (
+                      <img
+                        src={asset.public_url}
+                        alt={asset.name}
+                        loading="lazy"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <ImageIcon size={48} className="text-slate-300" />
+                    )}
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold" title={asset.name}>
+                        {asset.name}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {formatSize(asset.size_bytes)} ·{" "}
+                        {new Date(asset.created_at).toLocaleString("id-ID")}
+                      </p>
+                    </div>
+                    <Input
+                      value={asset.public_url}
+                      readOnly
+                      onFocus={(event) => event.currentTarget.select()}
+                      className="h-9 text-xs"
+                      aria-label={"URL " + asset.name}
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyUrl(asset)}
+                        title="Salin URL"
+                      >
+                        {copiedId === asset.id ? (
+                          <CheckCircle2 size={16} />
+                        ) : (
+                          <Copy size={16} />
+                        )}
+                        <span className="hidden sm:inline">Salin</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          window.open(asset.public_url, "_blank", "noopener")
+                        }
+                        title="Buka media"
+                      >
+                        <ExternalLink size={16} />
+                        <span className="hidden sm:inline">Buka</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => removeMedia(asset)}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Hapus media"
+                      >
+                        <Trash2 size={16} />
+                        <span className="hidden sm:inline">Hapus</span>
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed text-center text-slate-500">
+              <div>
+                <FolderOpen className="mx-auto mb-2 text-slate-300" size={38} />
+                <p>{query ? "Media tidak ditemukan." : "Belum ada media."}</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }
