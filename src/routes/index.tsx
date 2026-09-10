@@ -340,99 +340,211 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     }
   };
   return (
-    <div className="grid min-h-screen bg-[radial-gradient(circle_at_top_right,_#d1fae5_0,_#f8fafc_45%,_#ffffff_100%)] lg:grid-cols-2">
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="flex items-center gap-3 text-xl font-bold">
-          <span className="grid size-11 place-items-center rounded-xl bg-white/15">
-            <Mail />
-          </span>
-          Safar Mail
-        </div>
-        <div>
-          <h1 className="max-w-xl text-5xl font-bold leading-tight">
-            Kirim email yang tepat, kepada orang yang tepat.
-          </h1>
-          <p className="mt-5 max-w-lg text-emerald-100">
-            Satu dashboard untuk kampanye, kontak, template, jadwal, dan laporan
-            Mailketing.
-          </p>
-        </div>
-        <p className="text-sm text-emerald-200">Safar Iman Email Marketing</p>
-      </div>
-      <Center>
-        <Card className="m-4 w-full max-w-md border-white bg-white/90 shadow-2xl shadow-emerald-900/10">
-          <CardHeader>
-            <CardTitle>
-              {mode === "login" ? "Masuk ke Dashboard" : "Buat Admin Pertama"}
-            </CardTitle>
-            <p className="text-sm text-slate-500">
-              {mode === "login"
-                ? "Gunakan akun admin Safar Mail."
-                : "Akun pertama otomatis menjadi administrator."}
+    <div className="relative min-h-screen overflow-hidden bg-slate-50">
+      <div className="pointer-events-none absolute -left-32 -top-32 size-96 rounded-full bg-emerald-200/50 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-24 size-[30rem] rounded-full bg-teal-200/40 blur-3xl" />
+
+      <div className="relative grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
+        <section className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-950 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between xl:px-16">
+          <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:28px_28px]" />
+          <div className="pointer-events-none absolute -right-28 top-1/4 size-80 rounded-full border border-white/10 bg-white/5" />
+          <div className="pointer-events-none absolute -right-10 top-1/3 size-48 rounded-full border border-white/10" />
+
+          <div className="relative flex items-center gap-3">
+            <span className="grid size-12 place-items-center rounded-2xl border border-white/20 bg-white/10 shadow-lg backdrop-blur">
+              <Mail size={23} />
+            </span>
+            <div>
+              <p className="text-lg font-bold tracking-tight">Safar Mail</p>
+              <p className="text-xs text-emerald-200">
+                Email Marketing Management
+              </p>
+            </div>
+          </div>
+
+          <div className="relative max-w-xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 backdrop-blur">
+              <ShieldCheck size={15} />
+              Portal Administrasi Terproteksi
+            </span>
+            <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight xl:text-5xl">
+              Kelola kampanye email dengan lebih mudah dan terukur.
+            </h1>
+            <p className="mt-5 max-w-lg text-base leading-7 text-emerald-100/80">
+              Pantau pengiriman, engagement, kontak, template, serta laporan
+              Mailketing dari satu dashboard yang terintegrasi.
             </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {notice && <NoticeBox notice={notice} />}{" "}
-            {mode === "register" && (
-              <Field label="Nama lengkap">
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </Field>
-            )}
-            <Field label="Email">
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </Field>
-            <Field label="Password">
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={8}
-                  className="pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-md text-slate-400 transition-colors hover:bg-slate-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
-                  aria-label={
-                    showPassword
-                      ? "Sembunyikan password"
-                      : "Tampilkan password"
-                  }
-                  title={
-                    showPassword
-                      ? "Sembunyikan password"
-                      : "Tampilkan password"
-                  }
+
+            <div className="mt-9 grid max-w-lg grid-cols-3 gap-3">
+              {[
+                ["Kampanye", "Terjadwal"],
+                ["Tracking", "Realtime"],
+                ["Data", "Terpusat"],
+              ].map(([title, value]) => (
+                <div
+                  key={title}
+                  className="rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-sm"
                 >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                </button>
+                  <p className="text-xs text-emerald-200">{title}</p>
+                  <p className="mt-1 text-sm font-semibold">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative flex items-center justify-between text-xs text-emerald-200/80">
+            <span>Safar Iman Email Marketing</span>
+            <span>Secure Admin Access</span>
+          </div>
+        </section>
+
+        <main className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-8 lg:px-12">
+          <div className="w-full max-w-md">
+            <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
+              <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow-lg shadow-emerald-200">
+                <Mail size={21} />
+              </span>
+              <div>
+                <p className="font-bold text-slate-900">Safar Mail</p>
+                <p className="text-xs text-slate-500">
+                  Email Marketing Management
+                </p>
               </div>
-            </Field>
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700"
-              disabled={loading || !email || password.length < 8}
-              onClick={submit}
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <KeyRound />}
-              {mode === "login" ? "Masuk" : "Buat Akun"}
-            </Button>
-            {mode === "login" && (
-              <button
-                type="button"
-                className="w-full text-sm text-slate-500 hover:text-emerald-700"
-                onClick={recoverPassword}
-              >
-                Lupa password?
-              </button>
-            )}
-          </CardContent>
-        </Card>
-      </Center>
+            </div>
+
+            <Card className="overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-2xl shadow-slate-900/[0.08] backdrop-blur-xl">
+              <CardHeader className="space-y-3 px-6 pb-3 pt-7 sm:px-8 sm:pt-8">
+                <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                  Administrator
+                </span>
+                <div>
+                  <CardTitle className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    Selamat datang kembali
+                  </CardTitle>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Masuk menggunakan akun admin untuk mengelola Safar Mail.
+                  </p>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-5 px-6 pb-7 sm:px-8 sm:pb-8">
+                {notice && <NoticeBox notice={notice} />}
+
+                {mode === "register" && (
+                  <Field label="Nama lengkap">
+                    <Input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="Masukkan nama lengkap"
+                      autoComplete="name"
+                      className="h-12 rounded-xl border-slate-200 bg-slate-50/70 px-4 transition focus:bg-white"
+                    />
+                  </Field>
+                )}
+
+                <Field label="Alamat email">
+                  <div className="relative">
+                    <Mail
+                      size={18}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && password.length >= 8)
+                          void submit();
+                      }}
+                      placeholder="contoh: admin@email.com"
+                      autoComplete="email"
+                      inputMode="email"
+                      className="h-12 rounded-xl border-slate-200 bg-slate-50/70 pl-11 pr-4 transition focus:bg-white"
+                    />
+                  </div>
+                </Field>
+
+                <Field label="Password">
+                  <div className="relative">
+                    <KeyRound
+                      size={18}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && email && password.length >= 8)
+                          void submit();
+                      }}
+                      placeholder="Masukkan password minimal 8 karakter"
+                      minLength={8}
+                      autoComplete="current-password"
+                      className="h-12 rounded-xl border-slate-200 bg-slate-50/70 pl-11 pr-12 transition focus:bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                      aria-label={
+                        showPassword
+                          ? "Sembunyikan password"
+                          : "Tampilkan password"
+                      }
+                      title={
+                        showPassword
+                          ? "Sembunyikan password"
+                          : "Tampilkan password"
+                      }
+                    >
+                      {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                    </button>
+                  </div>
+                </Field>
+
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-800 hover:underline"
+                    onClick={recoverPassword}
+                  >
+                    Lupa password?
+                  </button>
+                </div>
+
+                <Button
+                  className="h-12 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 font-semibold shadow-lg shadow-emerald-200 transition hover:from-emerald-700 hover:to-teal-800"
+                  disabled={loading || !email || password.length < 8}
+                  onClick={submit}
+                >
+                  {loading ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <KeyRound />
+                  )}
+                  {loading ? "Memverifikasi..." : "Masuk ke Dashboard"}
+                </Button>
+
+                <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs leading-5 text-slate-500">
+                  <ShieldCheck
+                    size={17}
+                    className="mt-0.5 shrink-0 text-emerald-600"
+                  />
+                  <p>
+                    Akses dibatasi untuk akun yang telah diaktifkan oleh
+                    administrator.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <p className="mt-6 text-center text-xs text-slate-400">
+              Dengan masuk, Anda menyetujui kebijakan keamanan Safar Mail.
+            </p>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
