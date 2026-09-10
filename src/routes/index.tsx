@@ -520,29 +520,8 @@ function Dashboard({
       method: "POST",
       body: JSON.stringify(body),
     });
-  const queueWorkerInFlight = useRef(false);
-  useEffect(() => {
-    if (profile?.role !== "admin") return;
-    const processQueue = async () => {
-      if (queueWorkerInFlight.current || document.visibilityState !== "visible") return;
-      queueWorkerInFlight.current = true;
-      try {
-        const result = await invoke({ action: "process-queue" });
-        if ((result?.processed ?? 0) > 0) await load();
-      } catch {
-        // Worker berikutnya akan mencoba kembali; error tersimpan per penerima.
-      } finally {
-        queueWorkerInFlight.current = false;
-      }
-    };
-    const initial = window.setTimeout(processQueue, 5000);
-    const interval = window.setInterval(processQueue, 60000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(interval);
-    };
-  }, [token, profile?.role]);
-
+  // Pengiriman berjalan mandiri melalui Supabase Cron.
+  // Dashboard hanya memantau progres agar antrean tidak bergantung pada browser.
   const hasRunningCampaign = campaigns.some((campaign) =>
     ["processing", "scheduled"].includes(campaign.status),
   );
