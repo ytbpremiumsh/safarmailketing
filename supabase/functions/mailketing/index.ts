@@ -753,6 +753,7 @@ export default {
               )
               .slice(0, capacity);
 
+            let campaignBlockedByCredits = false;
             for (const recipient of recipients) {
               const attempt = Number(recipient.attempts ?? 0) + 1;
               const { data: claimed } = await admin
@@ -852,13 +853,21 @@ export default {
                 : response.message;
               const responseText = String(response.message ?? "");
               const statusCode = Number(response.http_status ?? 0);
+              const isInsufficientCredits =
+                !response.success &&
+                (statusCode === 402 ||
+                  /insufficient credits?|kredit (tidak cukup|habis)|saldo (tidak cukup|habis)/i.test(
+                    responseText,
+                  ));
               const isBounce =
                 !response.success &&
+                !isInsufficientCredits &&
                 /bounce|bad address|invalid (recipient|email)|mailbox (not found|unavailable)|user unknown|domain not found/i.test(
                   responseText,
                 );
               const isRejected =
                 !response.success &&
+                !isInsufficientCredits &&
                 !isBounce &&
                 statusCode >= 400 &&
                 statusCode < 500 &&
@@ -876,7 +885,31 @@ export default {
                   ));
               const eventTime = new Date().toISOString();
 
-              if (response.success) {
+              if (isInsufficientCredits) {
+                await admin
+                  .from("campaign_recipients")
+                  .update({
+                    status: "pending",
+                    attempts: Math.max(0, attempt - 1),
+                    last_error: "Kredit Mailketing tidak mencukupi. Kampanye dijeda otomatis.",
+                    provider_message: providerMessage,
+                    provider_response: response,
+                    provider_status_code: response.http_status ?? null,
+                    next_attempt_at: null,
+                    updated_at: eventTime,
+                  })
+                  .eq("id", recipient.id);
+                await admin
+                  .from("campaigns")
+                  .update({
+                    status: "paused",
+                    paused_at: eventTime,
+                    completed_at: null,
+                    updated_at: eventTime,
+                  })
+                  .eq("id", campaign.id);
+                campaignBlockedByCredits = true;
+              } else if (response.success) {
                 await admin
                   .from("campaign_recipients")
                   .update({
@@ -952,6 +985,7 @@ export default {
               }
 
               processed++;
+              if (campaignBlockedByCredits) break;
               await new Promise((resolve) => setTimeout(resolve, 750));
             }
 
@@ -990,14 +1024,19 @@ export default {
               .update({
                 sent_count: sent,
                 failed_count: failed,
-                status: pending
+                status: campaignBlockedByCredits
+                  ? "paused"
+                  : pending
                   ? "processing"
                   : failed
                     ? sent
                       ? "partial"
                       : "failed"
                     : "completed",
-                completed_at: pending ? null : new Date().toISOString(),
+                completed_at:
+                  campaignBlockedByCredits || pending
+                    ? null
+                    : new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
               .eq("id", campaign.id);
