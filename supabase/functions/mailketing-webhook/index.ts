@@ -133,20 +133,39 @@ export default {
     }
     await admin.from("campaign_recipients").update(updates).eq("id", recipient.id);
 
-    const [{ count: opened }, { count: clicked }, { count: bounced }] = await Promise.all([
-      admin.from("campaign_recipients").select("id", { count: "exact", head: true })
-        .eq("campaign_id", recipient.campaign_id).not("provider_opened_at", "is", null),
-      admin.from("campaign_recipients").select("id", { count: "exact", head: true })
-        .eq("campaign_id", recipient.campaign_id).not("provider_first_clicked_at", "is", null),
-      admin.from("campaign_recipients").select("id", { count: "exact", head: true })
-        .eq("campaign_id", recipient.campaign_id).eq("status", "bounced"),
-    ]);
-    await admin.from("campaigns").update({
-      opened_count: opened ?? 0,
-      clicked_count: clicked ?? 0,
-      failed_count: bounced ?? 0,
-      updated_at: new Date().toISOString(),
-    }).eq("id", recipient.campaign_id);
+    // Gabungkan tracking Mailketing dan tracking internal. Menghitung hanya
+    // provider akan menghapus angka klik internal setiap event open masuk.
+    const [{ count: opened }, { count: clicked }, { count: failed }] =
+      await Promise.all([
+        admin
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", recipient.campaign_id)
+          .or(
+            "internal_opened_at.not.is.null,provider_opened_at.not.is.null",
+          ),
+        admin
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", recipient.campaign_id)
+          .or(
+            "internal_first_clicked_at.not.is.null,provider_first_clicked_at.not.is.null",
+          ),
+        admin
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", recipient.campaign_id)
+          .in("status", ["failed", "bounced", "rejected"]),
+      ]);
+    await admin
+      .from("campaigns")
+      .update({
+        opened_count: opened ?? 0,
+        clicked_count: clicked ?? 0,
+        failed_count: failed ?? 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", recipient.campaign_id);
     await admin.from("mailketing_webhook_config").update({
       last_event_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
