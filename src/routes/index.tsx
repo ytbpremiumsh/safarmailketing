@@ -208,6 +208,28 @@ async function api(
   return data;
 }
 
+async function apiAll(
+  path: string,
+  token: string,
+  pageSize = 1000,
+) {
+  const allRows: any[] = [];
+  let offset = 0;
+  while (true) {
+    const separator = path.includes("?") ? "&" : "?";
+    const page = await api(
+      `${path}${separator}limit=${pageSize}&offset=${offset}`,
+      token,
+    );
+    if (!Array.isArray(page))
+      throw new Error("Respons daftar data tidak valid.");
+    allRows.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return allRows;
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
@@ -572,8 +594,8 @@ function Dashboard({
     try {
       const [p, c, t, h] = await Promise.all([
         api(`/rest/v1/profiles?id=eq.${session.user.id}&select=*`, token),
-        api(
-          "/rest/v1/contacts?select=*&order=created_at.desc&limit=1000",
+        apiAll(
+          "/rest/v1/contacts?select=*&order=created_at.desc,id.asc",
           token,
         ),
         api("/rest/v1/templates?select=*&order=updated_at.desc", token),
