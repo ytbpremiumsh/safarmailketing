@@ -1,5 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Bar,
   BarChart as RechartsBarChart,
@@ -118,6 +125,9 @@ type Notice = { success: boolean; message: string };
 type Session = {
   access_token: string;
   refresh_token: string;
+  expires_in?: number;
+  expires_at?: number;
+  token_type?: string;
   user: { id: string; email: string };
 };
 type Contact = {
@@ -191,6 +201,19 @@ export const Route = createFileRoute("/")({
 });
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let refreshAccessTokenHandler: (() => Promise<string | null>) | null = null;
+
+function tokenExpiresAt(token: string) {
+  try {
+    const value = (token.split(".")[1] ?? "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    return Number(JSON.parse(atob(value)).exp) * 1000;
+  } catch {
+    return 0;
+  }
+}
+
 function tokenIssuedAt(token: string) {
   try {
     const value = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
@@ -225,6 +248,16 @@ async function api(
     await pause(2500);
     return api(path, token, init, false);
   }
+  if (
+    !response.ok &&
+    retry &&
+    response.status === 401 &&
+    /jwt expired|token.*expired|invalid jwt/i.test(message) &&
+    refreshAccessTokenHandler
+  ) {
+    const freshToken = await refreshAccessTokenHandler();
+    if (freshToken) return api(path, freshToken, init, false);
+  }
   if (!response.ok) throw new Error(message || `HTTP ${response.status}`);
   return data;
 }
@@ -254,6 +287,85 @@ async function apiAll(
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const refreshPromise = useRef<Promise<Session | null> | null>(null);
+
+  const saveSession = useCallback((next: Session | null) => {
+    if (next) localStorage.setItem("safar-session", JSON.stringify(next));
+    else localStorage.removeItem("safar-session");
+    setSession(next);
+  }, []);
+
+  const refreshSession = useCallback(async (): Promise<string | null> => {
+    if (!session?.refresh_token) return null;
+    if (!refreshPromise.current) {
+      const current = session;
+      refreshPromise.current = (async () => {
+        try {
+          const response = await fetch(
+            `${SB_URL}/auth/v1/token?grant_type=refresh_token`,
+            {
+              method: "POST",
+              headers: headers(),
+              body: JSON.stringify({ refresh_token: current.refresh_token }),
+            },
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            const invalidRefresh =
+              response.status >= 400 &&
+              response.status < 500 &&
+              /refresh token|invalid.*token|session.*expired/i.test(
+                String(data?.message ?? data?.msg ?? data?.error_description ?? ""),
+              );
+            if (invalidRefresh) saveSession(null);
+            return null;
+          }
+          const fresh: Session = {
+            ...current,
+            ...data,
+            user: data.user ?? current.user,
+            refresh_token: data.refresh_token ?? current.refresh_token,
+          };
+          saveSession(fresh);
+          return fresh;
+        } catch {
+          // Gangguan jaringan tidak menghapus sesi; percobaan berikutnya akan mengulang.
+          return null;
+        } finally {
+          refreshPromise.current = null;
+        }
+      })();
+    }
+    const fresh = await refreshPromise.current;
+    return fresh?.access_token ?? null;
+  }, [session, saveSession]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    refreshAccessTokenHandler = refreshSession;
+    const expiresAt =
+      tokenExpiresAt(session.access_token) ||
+      (session.expires_at ? session.expires_at * 1000 : 0);
+    const refreshDelay = Math.max(
+      5000,
+      (expiresAt || Date.now() + 55 * 60 * 1000) - Date.now() - 2 * 60 * 1000,
+    );
+    const timer = window.setTimeout(() => void refreshSession(), refreshDelay);
+    const refreshIfNeeded = () => {
+      const remaining = expiresAt - Date.now();
+      if (!expiresAt || remaining < 5 * 60 * 1000) void refreshSession();
+    };
+    window.addEventListener("focus", refreshIfNeeded);
+    document.addEventListener("visibilitychange", refreshIfNeeded);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refreshIfNeeded);
+      document.removeEventListener("visibilitychange", refreshIfNeeded);
+      if (refreshAccessTokenHandler === refreshSession)
+        refreshAccessTokenHandler = null;
+    };
+  }, [session?.access_token, refreshSession]);
+
   useEffect(() => {
     const restore = async () => {
       const raw = localStorage.getItem("safar-session");
@@ -293,18 +405,14 @@ function App() {
     return (
       <Auth
         onSession={(s) => {
-          localStorage.setItem("safar-session", JSON.stringify(s));
-          setSession(s);
+          saveSession(s);
         }}
       />
     );
   return (
     <Dashboard
       session={session}
-      onLogout={() => {
-        localStorage.removeItem("safar-session");
-        setSession(null);
-      }}
+      onLogout={() => saveSession(null)}
     />
   );
 }
