@@ -410,6 +410,24 @@ export default {
         return json({ success: true, message: "Hak akses pengguna diperbarui." });
       }
 
+      if (action === "daily-stats") {
+        const days = Math.max(1, Math.min(90, Number(input.days) || 14));
+        const { data, error } = await admin.rpc("get_daily_email_stats", {
+          p_days: days,
+        });
+        if (error)
+          return json(
+            { success: false, message: "Statistik harian gagal dimuat: " + error.message },
+            400,
+          );
+        return json({
+          success: true,
+          days: data ?? [],
+          range_days: days,
+          timezone: "Asia/Jakarta",
+        });
+      }
+
       const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
