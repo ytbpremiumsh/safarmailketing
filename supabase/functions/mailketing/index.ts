@@ -211,6 +211,27 @@ const extractVerifiedSenders = (payload: any): string[] => {
   return Array.from(emails);
 };
 
+type BounceKind = "hard_bounce" | "soft_bounce" | "blacklist";
+
+const classifyBounce = (reasonValue: unknown): {
+  kind: BounceKind;
+  category: string;
+  expiresAt: string | null;
+} => {
+  const reason = String(reasonValue ?? "").trim();
+  if (/blacklist|blocked by recipient|spam complaint/i.test(reason)) {
+    return { kind: "blacklist", category: "Blacklist", expiresAt: null };
+  }
+  if (/(smtp[^0-9]*4[0-9]{2}|(^|[^0-9])4\.2\.2([^0-9]|$)|(^|[^0-9])452([^0-9]|$)|mailbox full|inbox full|over.?quota|out of storage|temporar)/i.test(reason)) {
+    return {
+      kind: "soft_bounce",
+      category: "Inbox Penuh",
+      expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return { kind: "hard_bounce", category: "Email Tidak Valid", expiresAt: null };
+};
+
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -410,24 +431,6 @@ export default {
         return json({ success: true, message: "Hak akses pengguna diperbarui." });
       }
 
-      if (action === "daily-stats") {
-        const days = Math.max(1, Math.min(90, Number(input.days) || 14));
-        const { data, error } = await admin.rpc("get_daily_email_stats", {
-          p_days: days,
-        });
-        if (error)
-          return json(
-            { success: false, message: "Statistik harian gagal dimuat: " + error.message },
-            400,
-          );
-        return json({
-          success: true,
-          days: data ?? [],
-          range_days: days,
-          timezone: "Asia/Jakarta",
-        });
-      }
-
       const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
       if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
@@ -549,7 +552,9 @@ export default {
           if (duplicate) return json({ success: false, code: "DUPLICATE_CAMPAIGN", campaign_id: duplicate.id, message: "Kampanye ini sudah pernah dibuat. Pengiriman ganda dicegah." }, 409);
         }
         const [{ data: suppressed }, { data: inactive }] = await Promise.all([
-          admin.from("suppressions").select("email").limit(10000),
+          admin.from("suppressions").select("email")
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+            .limit(10000),
           admin.from("contacts").select("email").neq("status", "active").limit(10000),
         ]);
         const blocked = new Set([
@@ -626,7 +631,9 @@ export default {
             .eq("campaign_id", input.campaign_id)
             .eq("status", "failed")
             .limit(10000),
-          admin.from("suppressions").select("email").limit(10000),
+          admin.from("suppressions").select("email")
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+            .limit(10000),
           admin.from("contacts")
             .select("id,email")
             .or("status.neq.active,unsubscribed_at.not.is.null,bounce_count.gt.0")
@@ -880,7 +887,7 @@ export default {
               const isBounce =
                 !response.success &&
                 !isInsufficientCredits &&
-                /bounce|bad address|invalid (recipient|email)|mailbox (not found|unavailable)|user unknown|domain not found/i.test(
+                /bounce|blacklist|bad address|invalid (recipient|email)|mailbox (not found|unavailable|full)|inbox full|over.?quota|out of storage|user unknown|domain not found|smtp[^0-9]*[45][0-9]{2}|(^|[^0-9])(452|550)([^0-9]|$)/i.test(
                   responseText,
                 );
               const isRejected =
@@ -989,15 +996,41 @@ export default {
                     updated_at: eventTime,
                   })
                   .eq("id", recipient.id);
-                if (isBounce && recipient.contact_id) {
-                  await admin
-                    .from("contacts")
-                    .update({
-                      status: "bounced",
-                      bounce_count: 1,
-                      updated_at: eventTime,
-                    })
-                    .eq("id", recipient.contact_id);
+                if (isBounce) {
+                  const classification = classifyBounce(responseText);
+                  if (recipient.contact_id) {
+                    const { data: contact } = await admin.from("contacts")
+                      .select("category,previous_category")
+                      .eq("id", recipient.contact_id)
+                      .maybeSingle();
+                    const systemCategories = ["Email Tidak Valid", "Inbox Penuh", "Blacklist", "Unsubscribe"];
+                    const previousCategory = !systemCategories.includes(String(contact?.category ?? "Umum"))
+                      ? String(contact?.category ?? "Umum")
+                      : contact?.previous_category ?? null;
+                    await admin
+                      .from("contacts")
+                      .update({
+                        previous_category: previousCategory,
+                        category: classification.category,
+                        status: "bounced",
+                        bounce_count: 1,
+                        suppression_kind: classification.kind,
+                        suppression_reason: responseText || "Bounce dilaporkan Mailketing",
+                        suppressed_until: classification.expiresAt,
+                        updated_at: eventTime,
+                      })
+                      .eq("id", recipient.contact_id);
+                  }
+                  await admin.from("suppressions").upsert({
+                    email: String(recipient.email).trim().toLowerCase(),
+                    contact_id: recipient.contact_id ?? null,
+                    reason: responseText || "mailketing_bounce",
+                    source: "mailketing_worker",
+                    kind: classification.kind,
+                    expires_at: classification.expiresAt,
+                    updated_at: eventTime,
+                    created_by: null,
+                  }, { onConflict: "email" });
                 }
                 failedThisRun++;
               }
