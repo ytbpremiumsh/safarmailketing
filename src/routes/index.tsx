@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Bar,
+  BarChart as RechartsBarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   AlertCircle,
   BarChart3,
   CheckCircle2,
@@ -147,6 +157,17 @@ type Campaign = {
   updated_at?: string;
   completed_at?: string;
 };
+type DailyEmailStat = {
+  day: string;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  rejected: number;
+  failed: number;
+};
+
 type View =
   | "dashboard"
   | "compose"
@@ -586,6 +607,9 @@ function Dashboard({
     [contacts, setContacts] = useState<Contact[]>([]),
     [templates, setTemplates] = useState<Template[]>([]),
     [campaigns, setCampaigns] = useState<Campaign[]>([]),
+    [dailyStats, setDailyStats] = useState<DailyEmailStat[]>([]),
+    [dailyRange, setDailyRange] = useState(14),
+    [dailyStatsLoading, setDailyStatsLoading] = useState(false),
     [provider, setProvider] = useState<any>(null),
     [profileLoaded, setProfileLoaded] = useState(false),
     [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -654,6 +678,48 @@ function Dashboard({
       method: "POST",
       body: JSON.stringify(body),
     });
+  useEffect(() => {
+    if (view !== "dashboard") return;
+    let active = true;
+    let refreshing = false;
+    const refreshDailyStats = async () => {
+      if (refreshing || document.visibilityState !== "visible") return;
+      refreshing = true;
+      setDailyStatsLoading(true);
+      try {
+        const rows = await api(
+          "/rest/v1/rpc/get_daily_email_stats",
+          token,
+          {
+            method: "POST",
+            body: JSON.stringify({ p_days: dailyRange }),
+          },
+        );
+        if (active) setDailyStats(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        if (active) {
+          setNotice({
+            success: false,
+            message:
+              error instanceof Error
+                ? error.message
+                : "Statistik harian gagal dimuat.",
+          });
+        }
+      } finally {
+        refreshing = false;
+        if (active) setDailyStatsLoading(false);
+      }
+    };
+    refreshDailyStats();
+    const interval = window.setInterval(refreshDailyStats, 30000);
+    window.addEventListener("focus", refreshDailyStats);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshDailyStats);
+    };
+  }, [token, view, dailyRange]);
   // Pengiriman berjalan mandiri melalui Supabase Cron.
   // Dashboard hanya memantau progres agar antrean tidak bergantung pada browser.
   const hasRunningCampaign = campaigns.some((campaign) =>
@@ -801,6 +867,10 @@ function Dashboard({
           contacts={contacts.length}
           stats={stats}
           provider={provider}
+          dailyStats={dailyStats}
+          dailyRange={dailyRange}
+          setDailyRange={setDailyRange}
+          dailyStatsLoading={dailyStatsLoading}
         />
       )}
       {view === "contacts" && (
@@ -972,8 +1042,39 @@ function Overview({
   contacts,
   stats,
   provider,
+  dailyStats,
+  dailyRange,
+  setDailyRange,
+  dailyStatsLoading,
 }: any) {
   const creditBalance = getCreditBalance(provider);
+  const dailyChartData = (dailyStats as DailyEmailStat[]).map((row) => ({
+    ...row,
+    label: new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit",
+      month: "short",
+    }).format(new Date(`${row.day}T00:00:00+07:00`)),
+  }));
+  const dailyTotals = (dailyStats as DailyEmailStat[]).reduce(
+    (total, row) => ({
+      sent: total.sent + Number(row.sent || 0),
+      delivered: total.delivered + Number(row.delivered || 0),
+      opened: total.opened + Number(row.opened || 0),
+      clicked: total.clicked + Number(row.clicked || 0),
+      bounced: total.bounced + Number(row.bounced || 0),
+      rejected: total.rejected + Number(row.rejected || 0),
+      failed: total.failed + Number(row.failed || 0),
+    }),
+    {
+      sent: 0,
+      delivered: 0,
+      opened: 0,
+      clicked: 0,
+      bounced: 0,
+      rejected: 0,
+      failed: 0,
+    },
+  );
   return (
     <>
       <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
@@ -1037,6 +1138,124 @@ function Overview({
                 {stats.clicked} ({stats.sent ? Math.round((stats.clicked / stats.sent) * 100) : 0}%)
               </b>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Statistik Pengiriman Email Harian</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                Aktivitas berdasarkan WIB, diperbarui otomatis setiap 30 detik.
+              </p>
+            </div>
+            <div className="flex w-fit rounded-xl bg-slate-100 p-1">
+              {[7, 14, 30].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setDailyRange(days)}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition sm:text-sm ${
+                    dailyRange === days
+                      ? "bg-white text-emerald-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {days} hari
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+            {[
+              ["Terkirim", dailyTotals.sent, "bg-emerald-50 text-emerald-800"],
+              ["Delivered", dailyTotals.delivered, "bg-teal-50 text-teal-800"],
+              ["Dibuka", dailyTotals.opened, "bg-sky-50 text-sky-800"],
+              ["Diklik", dailyTotals.clicked, "bg-violet-50 text-violet-800"],
+              ["Bounce", dailyTotals.bounced, "bg-rose-50 text-rose-800"],
+              ["Rejected", dailyTotals.rejected, "bg-orange-50 text-orange-800"],
+              ["Gagal", dailyTotals.failed, "bg-red-50 text-red-800"],
+            ].map(([label, value, color]) => (
+              <div key={String(label)} className={`rounded-2xl p-3 ${color}`}>
+                <p className="text-xs font-medium opacity-80">{label}</p>
+                <b className="mt-1 block text-xl">{value}</b>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white p-2 sm:p-4">
+            <div className="h-80 min-w-[680px]">
+              {dailyStatsLoading && !dailyChartData.length ? (
+                <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+                  <Loader2 size={18} className="animate-spin text-emerald-600" />
+                  Memuat statistik harian...
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsBarChart
+                    data={dailyChartData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 14,
+                        border: "1px solid #e2e8f0",
+                        boxShadow: "0 12px 30px rgba(15,23,42,.12)",
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
+                    <Bar dataKey="sent" name="Terkirim" fill="#10b981" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="opened" name="Dibuka" fill="#0ea5e9" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="clicked" name="Diklik" fill="#8b5cf6" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="bounced" name="Bounce" fill="#f43f5e" radius={[5, 5, 0, 0]} />
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <Th>Tanggal</Th>
+                  <Th>Terkirim</Th>
+                  <Th>Delivered</Th>
+                  <Th>Open</Th>
+                  <Th>Klik</Th>
+                  <Th>Bounce</Th>
+                  <Th>Rejected</Th>
+                  <Th>Gagal</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...dailyStats].reverse().map((row: DailyEmailStat) => (
+                  <tr key={row.day} className="border-t border-slate-100 hover:bg-slate-50/70">
+                    <Td>
+                      {new Intl.DateTimeFormat("id-ID", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      }).format(new Date(`${row.day}T00:00:00+07:00`))}
+                    </Td>
+                    <Td>{row.sent}</Td>
+                    <Td>{row.delivered}</Td>
+                    <Td>{row.opened}</Td>
+                    <Td>{row.clicked}</Td>
+                    <Td>{row.bounced}</Td>
+                    <Td>{row.rejected}</Td>
+                    <Td>{row.failed}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>
