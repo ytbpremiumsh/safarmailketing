@@ -21,6 +21,27 @@ const safeEqual = (left: string, right: string) => {
   return difference === 0;
 };
 
+type BounceKind = "hard_bounce" | "soft_bounce" | "blacklist";
+
+const classifyBounce = (reasonValue: unknown): {
+  kind: BounceKind;
+  category: string;
+  expiresAt: string | null;
+} => {
+  const reason = String(reasonValue ?? "").trim();
+  if (/blacklist|blocked by recipient|spam complaint/i.test(reason)) {
+    return { kind: "blacklist", category: "Blacklist", expiresAt: null };
+  }
+  if (/(smtp[^0-9]*4[0-9]{2}|(^|[^0-9])4\.2\.2([^0-9]|$)|(^|[^0-9])452([^0-9]|$)|mailbox full|inbox full|over.?quota|out of storage|temporar)/i.test(reason)) {
+    return {
+      kind: "soft_bounce",
+      category: "Inbox Penuh",
+      expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return { kind: "hard_bounce", category: "Email Tidak Valid", expiresAt: null };
+};
+
 export default {
   fetch: async (request: Request) => {
     if (request.method !== "POST") return json({ success: false, message: "POST required" }, 405);
@@ -98,28 +119,59 @@ export default {
       updates.first_clicked_at = recipient.provider_first_clicked_at ?? occurredAt;
       updates.click_count = count;
     } else if (type === "bounce") {
+      const reason = String(payload?.reason ?? "Bounce dilaporkan Mailketing");
+      const classification = classifyBounce(reason);
       updates.status = "bounced";
       updates.bounced_at = occurredAt;
-      updates.last_error = String(payload?.reason ?? "Bounce dilaporkan Mailketing");
+      updates.last_error = reason;
       if (recipient.contact_id) {
+        const { data: contact } = await admin.from("contacts")
+          .select("category,previous_category")
+          .eq("id", recipient.contact_id)
+          .maybeSingle();
+        const systemCategories = ["Email Tidak Valid", "Inbox Penuh", "Blacklist", "Unsubscribe"];
+        const previousCategory = !systemCategories.includes(String(contact?.category ?? "Umum"))
+          ? String(contact?.category ?? "Umum")
+          : contact?.previous_category ?? null;
         await admin.from("contacts").update({
+          previous_category: previousCategory,
+          category: classification.category,
           status: "bounced",
           bounce_count: 1,
+          suppression_kind: classification.kind,
+          suppression_reason: reason,
+          suppressed_until: classification.expiresAt,
           updated_at: new Date().toISOString(),
         }).eq("id", recipient.contact_id);
       }
       await admin.from("suppressions").upsert({
         email,
         contact_id: recipient.contact_id,
-        reason: String(payload?.reason ?? "mailketing_bounce"),
+        reason,
         source: "mailketing_webhook",
+        kind: classification.kind,
+        expires_at: classification.expiresAt,
+        updated_at: new Date().toISOString(),
         created_by: null,
       }, { onConflict: "email" });
     } else if (type === "unsubscribe") {
       if (recipient.contact_id) {
+        const { data: contact } = await admin.from("contacts")
+          .select("category,previous_category")
+          .eq("id", recipient.contact_id)
+          .maybeSingle();
+        const systemCategories = ["Email Tidak Valid", "Inbox Penuh", "Blacklist", "Unsubscribe"];
+        const previousCategory = !systemCategories.includes(String(contact?.category ?? "Umum"))
+          ? String(contact?.category ?? "Umum")
+          : contact?.previous_category ?? null;
         await admin.from("contacts").update({
+          previous_category: previousCategory,
+          category: "Unsubscribe",
           status: "unsubscribed",
           unsubscribed_at: occurredAt,
+          suppression_kind: "unsubscribe",
+          suppression_reason: "unsubscribe",
+          suppressed_until: null,
           updated_at: new Date().toISOString(),
         }).eq("id", recipient.contact_id);
       }
@@ -128,6 +180,9 @@ export default {
         contact_id: recipient.contact_id,
         reason: "unsubscribe",
         source: "mailketing_webhook",
+        kind: "unsubscribe",
+        expires_at: null,
+        updated_at: new Date().toISOString(),
         created_by: null,
       }, { onConflict: "email" });
     }
