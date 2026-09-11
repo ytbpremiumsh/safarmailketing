@@ -1048,6 +1048,7 @@ function Overview({
   dailyStatsLoading,
 }: any) {
   const creditBalance = getCreditBalance(provider);
+  const [showDailyTable, setShowDailyTable] = useState(false);
   const dailyChartData = (dailyStats as DailyEmailStat[]).map((row) => ({
     ...row,
     label: new Intl.DateTimeFormat("id-ID", {
@@ -1220,8 +1221,24 @@ function Overview({
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-100">
-            <table className="w-full min-w-[760px] text-left text-sm">
+          <div className="flex justify-center sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDailyTable((visible) => !visible)}
+              className="w-full rounded-xl sm:w-auto"
+              aria-expanded={showDailyTable}
+            >
+              {showDailyTable ? <EyeOff size={17} /> : <Eye size={17} />}
+              {showDailyTable
+                ? "Sembunyikan detail harian"
+                : "Tampilkan detail harian"}
+            </Button>
+          </div>
+
+          {showDailyTable && (
+            <div className="overflow-x-auto rounded-2xl border border-slate-100">
+              <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <Th>Tanggal</Th>
@@ -1255,8 +1272,9 @@ function Overview({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card>
