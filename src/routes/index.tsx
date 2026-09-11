@@ -202,6 +202,7 @@ export const Route = createFileRoute("/")({
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let refreshAccessTokenHandler: (() => Promise<string | null>) | null = null;
+let currentAccessToken: string | null = null;
 
 function tokenExpiresAt(token: string) {
   try {
@@ -228,13 +229,14 @@ async function api(
   init?: RequestInit,
   retry = true,
 ) {
+  const requestToken = currentAccessToken ?? token;
   if (path.includes("/functions/")) {
-    const age = Date.now() - tokenIssuedAt(token);
+    const age = Date.now() - tokenIssuedAt(requestToken);
     if (age < 2000) await pause(Math.min(2500, 2000 - age));
   }
   const response = await fetch(`${SB_URL}${path}`, {
     ...init,
-    headers: { ...headers(token), ...(init?.headers ?? {}) },
+    headers: { ...headers(requestToken), ...(init?.headers ?? {}) },
   });
   const data = await response.json().catch(() => null);
   const message = String(
@@ -246,7 +248,7 @@ async function api(
     /issued at.*future|not valid yet|jwt.*future/i.test(message)
   ) {
     await pause(2500);
-    return api(path, token, init, false);
+    return api(path, requestToken, init, false);
   }
   if (
     !response.ok &&
@@ -290,6 +292,7 @@ function App() {
   const refreshPromise = useRef<Promise<Session | null> | null>(null);
 
   const saveSession = useCallback((next: Session | null) => {
+    currentAccessToken = next?.access_token ?? null;
     if (next) localStorage.setItem("safar-session", JSON.stringify(next));
     else localStorage.removeItem("safar-session");
     setSession(next);
@@ -384,17 +387,22 @@ function App() {
           },
         );
         if (!res.ok) throw new Error("Sesi berakhir");
-        const fresh = await res.json();
-        localStorage.setItem("safar-session", JSON.stringify(fresh));
-        setSession(fresh);
+        const data = await res.json();
+        const fresh: Session = {
+          ...saved,
+          ...data,
+          user: data.user ?? saved.user,
+          refresh_token: data.refresh_token ?? saved.refresh_token,
+        };
+        saveSession(fresh);
       } catch {
-        localStorage.removeItem("safar-session");
+        saveSession(null);
       } finally {
         setReady(true);
       }
     };
     restore();
-  }, []);
+  }, [saveSession]);
   if (!ready)
     return (
       <Center>
