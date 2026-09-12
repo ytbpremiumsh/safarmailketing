@@ -1443,17 +1443,38 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   const [moveCategory, setMoveCategory] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [contactCategoryFilter, setContactCategoryFilter] = useState("all");
+  const [contactSystemFilter, setContactSystemFilter] = useState("all");
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [contactPage, setContactPage] = useState(1);
   const [busy, setBusy] = useState(false);
+  const systemCategoryNames = [
+    "Blacklist",
+    "Email Tidak Valid",
+    "Inbox Penuh",
+    "Unsubscribe",
+  ];
   const contactCategories = Array.from(
     new Set(workspaceContacts.map((contact: Contact) => contact.category || "Umum")),
   ).sort() as string[];
+  const originalContactCategories = contactCategories.filter(
+    (category) => !systemCategoryNames.includes(category),
+  );
+  const systemContactCategories = systemCategoryNames.filter((category) =>
+    workspaceContacts.some(
+      (contact: Contact) => (contact.category || "Umum") === category,
+    ),
+  );
   const normalizedQuery = contactQuery.trim().toLowerCase();
   const filteredContacts = workspaceContacts.filter((contact: Contact) => {
+    const category = contact.category || "Umum";
+    const isSystemContact = systemCategoryNames.includes(category);
     const matchesCategory =
-      contactCategoryFilter === "all" ||
-      (contact.category || "Umum") === contactCategoryFilter;
+      contactCategoryFilter === "all" || category === contactCategoryFilter;
+    const matchesSystemFilter =
+      contactSystemFilter === "all" ||
+      (contactSystemFilter === "original"
+        ? !isSystemContact
+        : category === contactSystemFilter);
     const searchable = [
       contact.registration_code,
       contact.full_name,
@@ -1465,7 +1486,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
-    return matchesCategory && (!normalizedQuery || searchable.includes(normalizedQuery));
+    return (
+      matchesCategory &&
+      matchesSystemFilter &&
+      (!normalizedQuery || searchable.includes(normalizedQuery))
+    );
   });
   const totalContactPages = Math.max(
     1,
@@ -1478,7 +1503,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   );
   useEffect(() => {
     setContactPage(1);
-  }, [contactQuery, contactCategoryFilter, rowsPerPage]);
+  }, [contactQuery, contactCategoryFilter, contactSystemFilter, rowsPerPage]);
 
   const save = async () => {
     setBusy(true);
@@ -2271,7 +2296,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             onChange={(e) => setDeleteCategory(e.target.value)}
           >
             <option value="">Pilih kategori yang akan dihapus</option>
-            {contactCategories.map((category) => (
+            {originalContactCategories.map((category) => (
               <option key={category} value={category}>
                 {category} ({workspaceContacts.filter((contact: Contact) => (contact.category || "Umum") === category).length} kontak)
               </option>
@@ -2280,6 +2305,42 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           <Button type="button" variant="destructive" disabled={busy || !deleteCategory} onClick={deleteWholeCategory}>
             <Trash2 /> Hapus Kategori & Kontak
           </Button>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-amber-950">Filter Otomatis Sistem</p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Dipisahkan dari kategori asli dan tidak dapat dihapus melalui menu kategori.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {systemContactCategories.length ? (
+                  systemContactCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                      onClick={() => {
+                        setContactCategoryFilter("all");
+                        setContactSystemFilter(category);
+                      }}
+                    >
+                      {category} (
+                      {workspaceContacts.filter(
+                        (contact: Contact) =>
+                          (contact.category || "Umum") === category,
+                      ).length}
+                      )
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-sm text-amber-700">
+                    Belum ada kontak yang difilter sistem.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
             <Button
               type="button"
@@ -2325,7 +2386,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               Menampilkan {filteredContacts.length} dari {workspaceContacts.length} kontak.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_200px_130px_auto]">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_190px_190px_130px_auto]">
             <label className="relative">
               <Search
                 size={17}
@@ -2339,14 +2400,40 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               />
             </label>
             <select
+              aria-label="Filter kategori asli"
               className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm shadow-sm"
               value={contactCategoryFilter}
-              onChange={(e) => setContactCategoryFilter(e.target.value)}
+              onChange={(e) => {
+                setContactCategoryFilter(e.target.value);
+                if (e.target.value !== "all") setContactSystemFilter("all");
+              }}
             >
-              <option value="all">Semua kategori</option>
-              {contactCategories.map((category) => (
+              <option value="all">Semua kategori asli</option>
+              {originalContactCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter otomatis sistem"
+              className="h-11 rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-sm text-amber-950 shadow-sm"
+              value={contactSystemFilter}
+              onChange={(e) => {
+                setContactSystemFilter(e.target.value);
+                if (e.target.value !== "all") setContactCategoryFilter("all");
+              }}
+            >
+              <option value="all">Semua filter sistem</option>
+              <option value="original">Hanya kategori asli</option>
+              {systemContactCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category} (
+                  {workspaceContacts.filter(
+                    (contact: Contact) =>
+                      (contact.category || "Umum") === category,
+                  ).length}
+                  )
                 </option>
               ))}
             </select>
