@@ -74,7 +74,18 @@ const addTracking = async (
     (_, quote, target) =>
       `href=${quote}${base}&a=click&u=${encodeURIComponent(target)}${quote}`,
   );
-  return `${links}<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&amp;a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div><img src="${base}&amp;a=open" width="1" height="1" alt="" style="display:block;width:1px;height:1px;opacity:0" />`;
+  const pixel = `<img src="${base}&amp;a=open&amp;v=2" width="1" height="1" alt="" border="0" style="display:block;width:1px;height:1px;border:0;overflow:hidden" />`;
+  const footer = `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&amp;a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div>`;
+
+  // Pixel diletakkan segera setelah tag body agar tidak dibuang oleh email
+  // client yang menghapus markup setelah </html> atau memotong email panjang.
+  let tracked = /<body\b[^>]*>/i.test(links)
+    ? links.replace(/<body\b[^>]*>/i, (bodyTag) => `${bodyTag}${pixel}`)
+    : `${pixel}${links}`;
+  tracked = /<\/body\s*>/i.test(tracked)
+    ? tracked.replace(/<\/body\s*>/i, `${footer}</body>`)
+    : `${tracked}${footer}`;
+  return tracked;
 };
 
 const requestMailketing = async (token: string, path: string, body?: unknown, corporate = false) => {
