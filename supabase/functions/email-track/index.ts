@@ -53,7 +53,7 @@ export default {
     });
     const { data: recipient } = await admin
       .from("campaign_recipients")
-      .select("contact_id,email,internal_opened_at,internal_first_clicked_at,internal_open_count,internal_click_count")
+      .select("contact_id,email,opened_at,first_clicked_at,open_count,click_count,internal_opened_at,internal_first_clicked_at,internal_open_count,internal_click_count")
       .eq("id", recipientId)
       .eq("campaign_id", campaignId)
       .maybeSingle();
@@ -83,36 +83,55 @@ export default {
 
     if (recipient) {
       const now = new Date().toISOString();
-      await admin
+      const isOpen = action === "open";
+      const recipientUpdate = isOpen
+        ? {
+            opened_at: recipient.opened_at ?? now,
+            open_count: (recipient.open_count ?? 0) + 1,
+            internal_opened_at: recipient.internal_opened_at ?? now,
+            internal_open_count: (recipient.internal_open_count ?? 0) + 1,
+            updated_at: now,
+          }
+        : {
+            // Klik adalah bukti kuat bahwa email telah dibuka. Menandainya
+            // sebagai open menjaga statistik unik agar opened >= clicked.
+            opened_at: recipient.opened_at ?? now,
+            open_count: Math.max(Number(recipient.open_count ?? 0), 1),
+            internal_opened_at: recipient.internal_opened_at ?? now,
+            internal_open_count: Math.max(Number(recipient.internal_open_count ?? 0), 1),
+            first_clicked_at: recipient.first_clicked_at ?? now,
+            click_count: (recipient.click_count ?? 0) + 1,
+            internal_first_clicked_at: recipient.internal_first_clicked_at ?? now,
+            internal_click_count: (recipient.internal_click_count ?? 0) + 1,
+            updated_at: now,
+          };
+      const { error: recipientError } = await admin
         .from("campaign_recipients")
-        .update(
-          action === "open"
-            ? {
-                internal_opened_at: recipient.internal_opened_at ?? now,
-                internal_open_count: (recipient.internal_open_count ?? 0) + 1,
-                updated_at: now,
-              }
-            : {
-                internal_first_clicked_at: recipient.internal_first_clicked_at ?? now,
-                internal_click_count: (recipient.internal_click_count ?? 0) + 1,
-                updated_at: now,
-              },
-        )
+        .update(recipientUpdate)
         .eq("id", recipientId);
+      if (recipientError) console.error("Tracking recipient update failed", recipientError);
 
-      const campaignMetric = action === "open" ? "opened_count" : "clicked_count";
-      const metricFilter = action === "open"
-        ? "internal_opened_at.not.is.null,provider_opened_at.not.is.null"
-        : "internal_first_clicked_at.not.is.null,provider_first_clicked_at.not.is.null";
-      const { count: uniquePeople } = await admin
-        .from("campaign_recipients")
-        .select("id", { count: "exact", head: true })
-        .eq("campaign_id", campaignId)
-        .or(metricFilter);
-      await admin
+      const [{ count: uniqueOpened }, { count: uniqueClicked }] = await Promise.all([
+        admin
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .or("internal_opened_at.not.is.null,provider_opened_at.not.is.null"),
+        admin
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .or("internal_first_clicked_at.not.is.null,provider_first_clicked_at.not.is.null"),
+      ]);
+      const { error: campaignError } = await admin
         .from("campaigns")
-        .update({ [campaignMetric]: uniquePeople ?? 0, updated_at: now })
+        .update({
+          opened_count: uniqueOpened ?? 0,
+          clicked_count: uniqueClicked ?? 0,
+          updated_at: now,
+        })
         .eq("id", campaignId);
+      if (campaignError) console.error("Tracking campaign update failed", campaignError);
 
       const forwarded = request.headers.get("x-forwarded-for") ?? "";
       const ipHash = forwarded
