@@ -98,6 +98,7 @@ const getSenderDefaultName = (email: string, fallback = "") => {
   const knownNames: Record<string, string> = {
     "admin@safariman.id": "Safar Iman",
     "noreply@ayopintar.com": "Ayo Pintar",
+    "noreply@prestasikita.com": "Prestasi Kita",
   };
   if (knownNames[normalized]) return knownNames[normalized];
   if (fallback.trim()) return fallback.trim();
@@ -3240,19 +3241,37 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
     setManualSending(true);
     try {
       const result = await invoke({
-        action: "send-test",
-        recipient: email,
-        email: {
+        action: "create-campaign",
+        idempotency_key: createIdempotencyKey(),
+        campaign: {
+          name: `Manual — ${manualMessage.recipient_name.trim()} — ${new Date().toLocaleString("id-ID")}`,
           from_name: f.from_name,
           from_email: f.from_email,
           subject: renderManualPreview(manualMessage.subject),
-          content: renderManualPreview(manualMessage.html_content),
+          html_content: renderManualPreview(manualMessage.html_content),
+          scheduled_at: null,
+          attachments: [],
         },
+        recipients: [
+          {
+            email,
+            variables: {
+              nama: manualMessage.recipient_name.trim(),
+              full_name: manualMessage.recipient_name.trim(),
+              first_name: manualMessage.recipient_name.trim(),
+              email,
+            },
+          },
+        ],
       });
+      if (result.success) {
+        await invoke({ action: "process-queue" });
+        await reload();
+      }
       setNotice({
         success: result.success,
         message: result.success
-          ? `Email manual berhasil dikirim kepada ${manualMessage.recipient_name}.`
+          ? `Email manual kepada ${manualMessage.recipient_name} sudah masuk antrean dan tercatat di Riwayat Kampanye.`
           : result.message || "Email manual gagal dikirim.",
       });
       if (result.success) {
