@@ -3144,7 +3144,17 @@ function Compose({
     [preview, setPreview] = useState(true),
     [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">(
       "desktop",
-    );
+    ),
+    [manualMessage, setManualMessage] = useState({
+      recipient_name: "",
+      recipient_email: "",
+      subject: "",
+      html_content: "",
+    }),
+    [manualPreviewDevice, setManualPreviewDevice] = useState<
+      "desktop" | "mobile"
+    >("desktop"),
+    [manualSending, setManualSending] = useState(false);
   const createIdempotencyKey = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -3286,6 +3296,74 @@ function Compose({
       /{{\s*([^{}]+)\s*}}/g,
       (_, key: string) => previewVariables[key.trim()] ?? `{{${key}}}`,
     );
+  const renderManualPreview = (value: string) =>
+    value.replace(/{{\s*(nama|email)\s*}}/gi, (_, key: string) =>
+      key.toLowerCase() === "nama"
+        ? manualMessage.recipient_name || "Nama Penerima"
+        : manualMessage.recipient_email || "penerima@email.com",
+    );
+  const sendManualMessage = async () => {
+    const email = manualMessage.recipient_email.trim().toLowerCase();
+    if (!f.from_email) {
+      setNotice({ success: false, message: "Pilih sender terverifikasi terlebih dahulu." });
+      return;
+    }
+    if (!manualMessage.recipient_name.trim() || !email) {
+      setNotice({ success: false, message: "Nama dan email penerima wajib diisi." });
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setNotice({ success: false, message: "Format email penerima tidak valid." });
+      return;
+    }
+    if (!manualMessage.subject.trim() || !manualMessage.html_content.trim()) {
+      setNotice({ success: false, message: "Subjek dan body email wajib diisi." });
+      return;
+    }
+    if (
+      !window.confirm(
+        `Kirim email dari ${f.from_email} kepada ${manualMessage.recipient_name} <${email}>?`,
+      )
+    )
+      return;
+
+    setManualSending(true);
+    try {
+      const result = await invoke({
+        action: "send-test",
+        recipient: email,
+        email: {
+          from_name: f.from_name,
+          from_email: f.from_email,
+          subject: renderManualPreview(manualMessage.subject),
+          content: renderManualPreview(manualMessage.html_content),
+        },
+      });
+      setNotice({
+        success: result.success,
+        message: result.success
+          ? `Email manual berhasil dikirim kepada ${manualMessage.recipient_name}.`
+          : result.message || "Email manual gagal dikirim.",
+      });
+      if (result.success) {
+        setManualMessage({
+          recipient_name: "",
+          recipient_email: "",
+          subject: "",
+          html_content: "",
+        });
+        await sync({ silent: true });
+      }
+    } catch (error) {
+      setNotice({
+        success: false,
+        message:
+          error instanceof Error ? error.message : "Email manual gagal dikirim.",
+      });
+    } finally {
+      setManualSending(false);
+    }
+  };
   const useTemplate = (id: string) => {
     const t = templates.find((x: Template) => x.id === id);
     if (t) setF({ ...f, subject: t.subject, html_content: t.html_content });
@@ -3368,6 +3446,196 @@ function Compose({
             }}
           />
         )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Mail size={20} className="text-emerald-600" />
+            Kirim Email Manual
+          </CardTitle>
+          <p className="text-sm text-slate-500">
+            Kirim satu email langsung dengan nama penerima dan desain HTML sendiri.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Nama pengirim">
+              <Input
+                placeholder="Contoh: Tim Safar Iman"
+                value={f.from_name}
+                onChange={(event) =>
+                  setF({ ...f, from_name: event.target.value })
+                }
+              />
+            </Field>
+            <Field label="Sender terverifikasi">
+              <div className="flex gap-2">
+                <select
+                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                  value={f.from_email}
+                  onChange={(event) => {
+                    const email = event.target.value;
+                    setF({
+                      ...f,
+                      from_email: email,
+                      from_name: getSenderDefaultName(email, f.from_name),
+                    });
+                  }}
+                >
+                  <option value="">
+                    {syncingSenders ? "Memuat sender..." : "Pilih sender"}
+                  </option>
+                  {senders.map((email: string) => (
+                    <option key={email} value={email}>
+                      {email}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={refreshSenders}
+                  disabled={syncingSenders}
+                  title="Sinkronkan sender dari Mailketing"
+                  aria-label="Sinkronkan sender"
+                >
+                  <RefreshCw
+                    size={16}
+                    className={syncingSenders ? "animate-spin" : ""}
+                  />
+                </Button>
+              </div>
+            </Field>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Nama penerima">
+              <Input
+                placeholder="Contoh: Rizky Arif Fauzi"
+                value={manualMessage.recipient_name}
+                onChange={(event) =>
+                  setManualMessage({
+                    ...manualMessage,
+                    recipient_name: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Email penerima">
+              <Input
+                type="email"
+                inputMode="email"
+                placeholder="nama@email.com"
+                value={manualMessage.recipient_email}
+                onChange={(event) =>
+                  setManualMessage({
+                    ...manualMessage,
+                    recipient_email: event.target.value,
+                  })
+                }
+              />
+            </Field>
+          </div>
+          <Field label="Subjek email">
+            <Input
+              placeholder="Masukkan subjek email"
+              value={manualMessage.subject}
+              onChange={(event) =>
+                setManualMessage({
+                  ...manualMessage,
+                  subject: event.target.value,
+                })
+              }
+            />
+          </Field>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="overflow-hidden rounded-xl border bg-slate-950">
+              <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Body email (HTML)
+              </div>
+              <Textarea
+                rows={16}
+                className="min-h-[400px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
+                placeholder={'<h2>Halo {{nama}}</h2>\n<p>Tulis isi email di sini.</p>'}
+                value={manualMessage.html_content}
+                onChange={(event) =>
+                  setManualMessage({
+                    ...manualMessage,
+                    html_content: event.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Preview email
+                  </p>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                    {renderManualPreview(manualMessage.subject) || "Tanpa subjek"}
+                  </p>
+                </div>
+                <div className="flex rounded-lg bg-slate-100 p-1">
+                  {(["desktop", "mobile"] as const).map((device) => (
+                    <button
+                      key={device}
+                      type="button"
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
+                        manualPreviewDevice === device
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500"
+                      }`}
+                      onClick={() => setManualPreviewDevice(device)}
+                    >
+                      {device}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="overflow-auto p-3 sm:p-5">
+                <iframe
+                  title="Preview email manual"
+                  sandbox=""
+                  srcDoc={
+                    manualMessage.html_content.trim()
+                      ? renderManualPreview(manualMessage.html_content)
+                      : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan body HTML untuk melihat desain email.</p></body></html>'
+                  }
+                  className={`mx-auto h-[400px] bg-white shadow-sm transition-[width] duration-200 ${
+                    manualPreviewDevice === "mobile"
+                      ? "w-[375px] max-w-full"
+                      : "w-full"
+                  }`}
+                />
+              </div>
+              <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
+                Gunakan <code>{"{{nama}}"}</code> dan <code>{"{{email}}"}</code> untuk data penerima.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+            <p className="text-xs text-slate-500">
+              Dikirim dari <b className="text-slate-700">{f.from_email || "sender belum dipilih"}</b>.
+            </p>
+            <Button
+              type="button"
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={
+                manualSending ||
+                !f.from_email ||
+                !manualMessage.recipient_name.trim() ||
+                !manualMessage.recipient_email.trim() ||
+                !manualMessage.subject.trim() ||
+                !manualMessage.html_content.trim()
+              }
+              onClick={sendManualMessage}
+            >
+              {manualSending ? <Loader2 className="animate-spin" /> : <Send />}
+              {manualSending ? "Mengirim..." : "Kirim Email Manual"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardContent className="space-y-4 p-5">
           <div className="grid gap-4 sm:grid-cols-2">
