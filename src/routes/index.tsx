@@ -155,6 +155,7 @@ type Campaign = {
   created_at: string;
   updated_at?: string;
   completed_at?: string;
+  audience_summary?: string;
 };
 type DailyEmailStat = {
   day: string;
@@ -3251,6 +3252,7 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
           html_content: renderManualPreview(manualMessage.html_content),
           scheduled_at: null,
           attachments: [],
+          audience_summary: `${manualMessage.recipient_name.trim()} <${email}>`,
         },
         recipients: [
           {
@@ -3339,6 +3341,30 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
             html_content: f.html_content,
             scheduled_at: f.scheduled_at ? new Date(f.scheduled_at).toISOString() : null,
             attachments: f.attachments.filter(Boolean),
+            audience_summary: (() => {
+              const chosenContacts = workspaceContacts.filter((contact: Contact) =>
+                selected.includes(contact.id),
+              );
+              const chosenCategories = Array.from(
+                new Set(chosenContacts.map((contact: Contact) => contact.category || "Umum")),
+              );
+              const categoryText = chosenCategories.length
+                ? `Kategori: ${chosenCategories.slice(0, 3).join(", ")}${
+                    chosenCategories.length > 3 ? ` +${chosenCategories.length - 3} lainnya` : ""
+                  }`
+                : "";
+              const manualCount = manual
+                .split(/[\n,;]+/)
+                .map((email: string) => email.trim())
+                .filter(Boolean).length;
+              return [
+                categoryText,
+                `${chosenContacts.length} kontak tersimpan`,
+                manualCount ? `${manualCount} penerima tambahan` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            })(),
           },
           recipients,
         });
@@ -5294,6 +5320,12 @@ function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
               <tr key={campaign.id} className="border-b hover:bg-slate-50">
                 <Td>
                   <b>{campaign.name}</b>
+                  <p className="mt-1 flex max-w-sm items-center gap-1.5 truncate text-xs font-medium text-emerald-700">
+                    <Users size={13} className="shrink-0" />
+                    <span className="truncate">
+                      {campaign.audience_summary || `${campaign.total_count} penerima`}
+                    </span>
+                  </p>
                   <p className="max-w-xs truncate text-xs text-slate-500">{campaign.subject}</p>
                 </Td>
                 <Td>
