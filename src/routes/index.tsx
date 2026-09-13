@@ -3141,7 +3141,10 @@ function Compose({
     [categoryFilter, setCategoryFilter] = useState("all"),
     [busy, setBusy] = useState(false),
     [syncingSenders, setSyncingSenders] = useState(false),
-    [preview, setPreview] = useState(false);
+    [preview, setPreview] = useState(true),
+    [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">(
+      "desktop",
+    );
   const createIdempotencyKey = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -3241,6 +3244,48 @@ function Compose({
       (r, i, a) => a.findIndex((x) => x.email === r.email) === i,
     );
   }, [selected, manual, workspaceContacts]);
+  const previewContact =
+    workspaceContacts.find((contact: Contact) => selected.includes(contact.id)) ??
+    workspaceContacts[0];
+  const previewVariables: Record<string, string> = {
+    kode: previewContact?.registration_code || "HXP-001",
+    kode_pendaftaran: previewContact?.registration_code || "HXP-001",
+    registration_code: previewContact?.registration_code || "HXP-001",
+    nama:
+      previewContact?.full_name ||
+      [previewContact?.first_name, previewContact?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      "Nama Penerima",
+    daftar_nama:
+      previewContact?.full_name ||
+      [previewContact?.first_name, previewContact?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      "Nama Penerima",
+    full_name:
+      previewContact?.full_name ||
+      [previewContact?.first_name, previewContact?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      "Nama Penerima",
+    first_name:
+      previewContact?.first_name ||
+      previewContact?.full_name ||
+      "Nama Penerima",
+    last_name: previewContact?.last_name || "",
+    email: previewContact?.email || "penerima@email.com",
+    whatsapp: previewContact?.mobile || "081234567890",
+    mobile: previewContact?.mobile || "081234567890",
+    kategori: previewContact?.category || "Umum",
+    category: previewContact?.category || "Umum",
+    ...(previewContact?.custom_fields ?? {}),
+  };
+  const renderCampaignPreview = (value: string) =>
+    value.replace(
+      /{{\s*([^{}]+)\s*}}/g,
+      (_, key: string) => previewVariables[key.trim()] ?? `{{${key}}}`,
+    );
   const useTemplate = (id: string) => {
     const t = templates.find((x: Template) => x.id === id);
     if (t) setF({ ...f, subject: t.subject, html_content: t.html_content });
@@ -3488,14 +3533,102 @@ function Compose({
               onChange={(e) => setManual(e.target.value)}
             />
           </Field>
-          <Field label="Konten HTML">
-            <Textarea
-              rows={12}
-              className="font-mono"
-              value={f.html_content}
-              onChange={(e) => setF({ ...f, html_content: e.target.value })}
-            />
-          </Field>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Konten HTML</p>
+                <p className="text-xs text-slate-500">
+                  Tulis kode HTML dan lihat hasil desain email secara langsung.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPreview((current) => !current)}
+              >
+                {preview ? <EyeOff size={16} /> : <Eye size={16} />}
+                {preview ? "Sembunyikan preview" : "Tampilkan preview"}
+              </Button>
+            </div>
+            <div
+              className={
+                preview
+                  ? "grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+                  : ""
+              }
+            >
+              <div className="overflow-hidden rounded-xl border bg-slate-950">
+                <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Kode HTML
+                </div>
+                <Textarea
+                  rows={18}
+                  className="min-h-[450px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
+                  placeholder="Tempel atau tulis desain HTML email di sini..."
+                  value={f.html_content}
+                  onChange={(e) =>
+                    setF({ ...f, html_content: e.target.value })
+                  }
+                />
+              </div>
+              {preview && (
+                <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                        Preview desain email
+                      </p>
+                      <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                        {renderCampaignPreview(f.subject) || "Tanpa subjek"}
+                      </p>
+                    </div>
+                    <div className="flex rounded-lg bg-slate-100 p-1">
+                      <button
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                          previewDevice === "desktop"
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-500"
+                        }`}
+                        onClick={() => setPreviewDevice("desktop")}
+                      >
+                        Desktop
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                          previewDevice === "mobile"
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-500"
+                        }`}
+                        onClick={() => setPreviewDevice("mobile")}
+                      >
+                        Mobile
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-auto p-3 sm:p-5">
+                    <iframe
+                      title="Preview desain kampanye"
+                      sandbox=""
+                      srcDoc={
+                        f.html_content.trim()
+                          ? renderCampaignPreview(f.html_content)
+                          : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan konten HTML untuk melihat desain email.</p></body></html>'
+                      }
+                      className={`mx-auto h-[450px] bg-white shadow-sm transition-[width] duration-200 ${
+                        previewDevice === "mobile" ? "w-[375px] max-w-full" : "w-full"
+                      }`}
+                    />
+                  </div>
+                  <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
+                    Keyword menampilkan contoh data dari kontak yang dipilih.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {f.attachments.map((a: string, i: number) => (
               <Field key={i} label={`URL lampiran ${i + 1}`}>
@@ -3522,9 +3655,6 @@ function Compose({
             <b>{recipients.length}</b> kredit
           </p>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={() => setPreview(!preview)}>
-              Pratinjau
-            </Button>
             <Button
               variant="outline"
               onClick={() => submit(true)}
@@ -3550,14 +3680,6 @@ function Compose({
               {f.scheduled_at ? "Jadwalkan" : "Kirim Sekarang"}
             </Button>
           </div>
-          {preview && (
-            <div className="rounded-xl border bg-white p-5">
-              <p className="mb-3 border-b pb-3 font-semibold">
-                {f.subject || "Tanpa subjek"}
-              </p>
-              <div dangerouslySetInnerHTML={{ __html: f.html_content }} />
-            </div>
-          )}
         </CardContent>
       </Card>
     </>
