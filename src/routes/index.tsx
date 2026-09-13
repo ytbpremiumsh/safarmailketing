@@ -1,12 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart as RechartsBarChart,
@@ -70,22 +63,16 @@ const getCreditBalance = (provider: any): number | undefined => {
     provider?.credits?.saldo,
     provider?.credits?.data?.saldo,
   ];
-  const raw = candidates.find(
-    (value) => value !== undefined && value !== null && value !== "",
-  );
+  const raw = candidates.find((value) => value !== undefined && value !== null && value !== "");
   if (raw === undefined) return undefined;
-  const normalized =
-    typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
+  const normalized = typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const getVerifiedSenders = (provider: any): string[] => {
   const preferred = provider?.verified_senders;
-  const source =
-    Array.isArray(preferred) && preferred.length
-      ? preferred
-      : provider?.senders;
+  const source = Array.isArray(preferred) && preferred.length ? preferred : provider?.senders;
   const emails = new Set<string>();
   const visit = (value: any, depth = 0) => {
     if (depth > 6 || value === null || value === undefined) return;
@@ -98,15 +85,16 @@ const getVerifiedSenders = (provider: any): string[] => {
       value.forEach((item) => visit(item, depth + 1));
       return;
     }
-    if (typeof value === "object")
-      Object.values(value).forEach((item) => visit(item, depth + 1));
+    if (typeof value === "object") Object.values(value).forEach((item) => visit(item, depth + 1));
   };
   visit(source);
   return Array.from(emails);
 };
 
 const getSenderDefaultName = (email: string, fallback = "") => {
-  const normalized = String(email ?? "").trim().toLowerCase();
+  const normalized = String(email ?? "")
+    .trim()
+    .toLowerCase();
   const knownNames: Record<string, string> = {
     "admin@safariman.id": "Safar Iman",
     "noreply@ayopintar.com": "Ayo Pintar",
@@ -178,14 +166,7 @@ type DailyEmailStat = {
   failed: number;
 };
 
-type View =
-  | "dashboard"
-  | "compose"
-  | "contacts"
-  | "templates"
-  | "media"
-  | "history"
-  | "settings";
+type View = "dashboard" | "compose" | "contacts" | "templates" | "media" | "history" | "settings";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -206,9 +187,7 @@ let currentAccessToken: string | null = null;
 
 function tokenExpiresAt(token: string) {
   try {
-    const value = (token.split(".")[1] ?? "")
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+    const value = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
     return Number(JSON.parse(atob(value)).exp) * 1000;
   } catch {
     return 0;
@@ -223,12 +202,7 @@ function tokenIssuedAt(token: string) {
     return 0;
   }
 }
-async function api(
-  path: string,
-  token: string,
-  init?: RequestInit,
-  retry = true,
-) {
+async function api(path: string, token: string, init?: RequestInit, retry = true) {
   const requestToken = currentAccessToken ?? token;
   if (path.includes("/functions/")) {
     const age = Date.now() - tokenIssuedAt(requestToken);
@@ -242,11 +216,7 @@ async function api(
   const message = String(
     data?.message || data?.msg || data?.error_description || data?.error || "",
   );
-  if (
-    !response.ok &&
-    retry &&
-    /issued at.*future|not valid yet|jwt.*future/i.test(message)
-  ) {
+  if (!response.ok && retry && /issued at.*future|not valid yet|jwt.*future/i.test(message)) {
     await pause(2500);
     return api(path, requestToken, init, false);
   }
@@ -264,21 +234,13 @@ async function api(
   return data;
 }
 
-async function apiAll(
-  path: string,
-  token: string,
-  pageSize = 1000,
-) {
+async function apiAll(path: string, token: string, pageSize = 1000) {
   const allRows: any[] = [];
   let offset = 0;
   while (true) {
     const separator = path.includes("?") ? "&" : "?";
-    const page = await api(
-      `${path}${separator}limit=${pageSize}&offset=${offset}`,
-      token,
-    );
-    if (!Array.isArray(page))
-      throw new Error("Respons daftar data tidak valid.");
+    const page = await api(`${path}${separator}limit=${pageSize}&offset=${offset}`, token);
+    if (!Array.isArray(page)) throw new Error("Respons daftar data tidak valid.");
     allRows.push(...page);
     if (page.length < pageSize) break;
     offset += pageSize;
@@ -304,14 +266,11 @@ function App() {
       const current = session;
       refreshPromise.current = (async () => {
         try {
-          const response = await fetch(
-            `${SB_URL}/auth/v1/token?grant_type=refresh_token`,
-            {
-              method: "POST",
-              headers: headers(),
-              body: JSON.stringify({ refresh_token: current.refresh_token }),
-            },
-          );
+          const response = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify({ refresh_token: current.refresh_token }),
+          });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
             const invalidRefresh =
@@ -347,8 +306,7 @@ function App() {
     if (!session?.access_token) return;
     refreshAccessTokenHandler = refreshSession;
     const expiresAt =
-      tokenExpiresAt(session.access_token) ||
-      (session.expires_at ? session.expires_at * 1000 : 0);
+      tokenExpiresAt(session.access_token) || (session.expires_at ? session.expires_at * 1000 : 0);
     const refreshDelay = Math.max(
       5000,
       (expiresAt || Date.now() + 55 * 60 * 1000) - Date.now() - 2 * 60 * 1000,
@@ -364,8 +322,7 @@ function App() {
       window.clearTimeout(timer);
       window.removeEventListener("focus", refreshIfNeeded);
       document.removeEventListener("visibilitychange", refreshIfNeeded);
-      if (refreshAccessTokenHandler === refreshSession)
-        refreshAccessTokenHandler = null;
+      if (refreshAccessTokenHandler === refreshSession) refreshAccessTokenHandler = null;
     };
   }, [session?.access_token, refreshSession]);
 
@@ -378,14 +335,11 @@ function App() {
       }
       try {
         const saved = JSON.parse(raw) as Session;
-        const res = await fetch(
-          `${SB_URL}/auth/v1/token?grant_type=refresh_token`,
-          {
-            method: "POST",
-            headers: headers(),
-            body: JSON.stringify({ refresh_token: saved.refresh_token }),
-          },
-        );
+        const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ refresh_token: saved.refresh_token }),
+        });
         if (!res.ok) throw new Error("Sesi berakhir");
         const data = await res.json();
         const fresh: Session = {
@@ -417,12 +371,7 @@ function App() {
         }}
       />
     );
-  return (
-    <Dashboard
-      session={session}
-      onLogout={() => saveSession(null)}
-    />
-  );
+  return <Dashboard session={session} onLogout={() => saveSession(null)} />;
 }
 
 function Auth({ onSession }: { onSession: (s: Session) => void }) {
@@ -437,32 +386,21 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     setLoading(true);
     setNotice(null);
     try {
-      const endpoint =
-        mode === "login"
-          ? "/auth/v1/token?grant_type=password"
-          : "/auth/v1/signup";
+      const endpoint = mode === "login" ? "/auth/v1/token?grant_type=password" : "/auth/v1/signup";
       const res = await fetch(`${SB_URL}${endpoint}`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify(
-          mode === "login"
-            ? { email, password }
-            : { email, password, data: { full_name: name } },
+          mode === "login" ? { email, password } : { email, password, data: { full_name: name } },
         ),
       });
       const data = await res.json();
       if (!res.ok)
-        throw new Error(
-          data.error_description ||
-            data.msg ||
-            data.message ||
-            "Autentikasi gagal.",
-        );
+        throw new Error(data.error_description || data.msg || data.message || "Autentikasi gagal.");
       if (!data.access_token) {
         setNotice({
           success: true,
-          message:
-            "Pendaftaran diterima. Periksa email jika konfirmasi diwajibkan.",
+          message: "Pendaftaran diterima. Periksa email jika konfirmasi diwajibkan.",
         });
         return;
       }
@@ -491,7 +429,10 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || "Permintaan gagal.");
-      setNotice({ success: true, message: "Tautan pengaturan ulang password telah dikirim ke email." });
+      setNotice({
+        success: true,
+        message: "Tautan pengaturan ulang password telah dikirim ke email.",
+      });
     } catch (e) {
       setNotice({ success: false, message: e instanceof Error ? e.message : "Permintaan gagal." });
     } finally {
@@ -515,9 +456,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
             </span>
             <div>
               <p className="text-lg font-bold tracking-tight">Safar Mail</p>
-              <p className="text-xs text-emerald-200">
-                Email Marketing Management
-              </p>
+              <p className="text-xs text-emerald-200">Email Marketing Management</p>
             </div>
           </div>
 
@@ -530,8 +469,8 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
               Kelola kampanye email dengan lebih mudah dan terukur.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-emerald-100/80">
-              Pantau pengiriman, engagement, kontak, template, serta laporan
-              Mailketing dari satu dashboard yang terintegrasi.
+              Pantau pengiriman, engagement, kontak, template, serta laporan Mailketing dari satu
+              dashboard yang terintegrasi.
             </p>
 
             <div className="mt-9 grid max-w-lg grid-cols-3 gap-3">
@@ -565,9 +504,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
               </span>
               <div>
                 <p className="font-bold text-slate-900">Safar Mail</p>
-                <p className="text-xs text-slate-500">
-                  Email Marketing Management
-                </p>
+                <p className="text-xs text-slate-500">Email Marketing Management</p>
               </div>
             </div>
 
@@ -612,8 +549,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && password.length >= 8)
-                          void submit();
+                        if (event.key === "Enter" && password.length >= 8) void submit();
                       }}
                       placeholder="contoh: admin@email.com"
                       autoComplete="email"
@@ -634,8 +570,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && email && password.length >= 8)
-                          void submit();
+                        if (event.key === "Enter" && email && password.length >= 8) void submit();
                       }}
                       placeholder="Masukkan password minimal 8 karakter"
                       minLength={8}
@@ -646,16 +581,8 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                       type="button"
                       onClick={() => setShowPassword((visible) => !visible)}
                       className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
-                      aria-label={
-                        showPassword
-                          ? "Sembunyikan password"
-                          : "Tampilkan password"
-                      }
-                      title={
-                        showPassword
-                          ? "Sembunyikan password"
-                          : "Tampilkan password"
-                      }
+                      aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                      title={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                     >
                       {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                     </button>
@@ -677,23 +604,13 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                   disabled={loading || !email || password.length < 8}
                   onClick={submit}
                 >
-                  {loading ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <KeyRound />
-                  )}
+                  {loading ? <Loader2 className="animate-spin" /> : <KeyRound />}
                   {loading ? "Memverifikasi..." : "Masuk ke Dashboard"}
                 </Button>
 
                 <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs leading-5 text-slate-500">
-                  <ShieldCheck
-                    size={17}
-                    className="mt-0.5 shrink-0 text-emerald-600"
-                  />
-                  <p>
-                    Akses dibatasi untuk akun yang telah diaktifkan oleh
-                    administrator.
-                  </p>
+                  <ShieldCheck size={17} className="mt-0.5 shrink-0 text-emerald-600" />
+                  <p>Akses dibatasi untuk akun yang telah diaktifkan oleh administrator.</p>
                 </div>
               </CardContent>
             </Card>
@@ -708,13 +625,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
   );
 }
 
-function Dashboard({
-  session,
-  onLogout,
-}: {
-  session: Session;
-  onLogout: () => void;
-}) {
+function Dashboard({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const token = session.access_token;
   const [view, setView] = useState<View>("dashboard"),
     [loading, setLoading] = useState(false),
@@ -734,15 +645,9 @@ function Dashboard({
     try {
       const [p, c, t, h] = await Promise.all([
         api(`/rest/v1/profiles?id=eq.${session.user.id}&select=*`, token),
-        apiAll(
-          "/rest/v1/contacts?select=*&order=created_at.desc,id.asc",
-          token,
-        ),
+        apiAll("/rest/v1/contacts?select=*&order=created_at.desc,id.asc", token),
         api("/rest/v1/templates?select=*&order=updated_at.desc", token),
-        api(
-          "/rest/v1/campaigns?select=*&order=created_at.desc&limit=100",
-          token,
-        ),
+        api("/rest/v1/campaigns?select=*&order=created_at.desc&limit=100", token),
       ]);
       setProfile(p[0] ?? null);
       setProfileLoaded(true);
@@ -761,9 +666,7 @@ function Dashboard({
   useEffect(() => {
     load();
     try {
-      setSidebarCollapsed(
-        localStorage.getItem("safar-sidebar-collapsed") === "true",
-      );
+      setSidebarCollapsed(localStorage.getItem("safar-sidebar-collapsed") === "true");
     } catch {}
   }, []);
   const toggleSidebar = () => {
@@ -803,23 +706,16 @@ function Dashboard({
       refreshing = true;
       setDailyStatsLoading(true);
       try {
-        const rows = await api(
-          "/rest/v1/rpc/get_daily_email_stats",
-          token,
-          {
-            method: "POST",
-            body: JSON.stringify({ p_days: dailyRange }),
-          },
-        );
+        const rows = await api("/rest/v1/rpc/get_daily_email_stats", token, {
+          method: "POST",
+          body: JSON.stringify({ p_days: dailyRange }),
+        });
         if (active) setDailyStats(Array.isArray(rows) ? rows : []);
       } catch (error) {
         if (active) {
           setNotice({
             success: false,
-            message:
-              error instanceof Error
-                ? error.message
-                : "Statistik harian gagal dimuat.",
+            message: error instanceof Error ? error.message : "Statistik harian gagal dimuat.",
           });
         }
       } finally {
@@ -878,9 +774,7 @@ function Dashboard({
       const d = await invoke({ action: "sync" });
       if (d.code === "ACCOUNT_INACTIVE") {
         setProvider(null);
-        setProfile((current: any) =>
-          current ? { ...current, active: false } : current,
-        );
+        setProfile((current: any) => (current ? { ...current, active: false } : current));
         setProfileLoaded(true);
         if (!options.silent) {
           setNotice({
@@ -933,9 +827,7 @@ function Dashboard({
     clicked: campaigns.reduce((n, c) => n + (c.clicked_count ?? 0), 0),
     queued: Math.max(totalRecipients - attemptedCount, 0),
     scheduled: campaigns.filter((c) => c.status === "scheduled").length,
-    successRate: attemptedCount
-      ? Math.round((sentCount / attemptedCount) * 100)
-      : 0,
+    successRate: attemptedCount ? Math.round((sentCount / attemptedCount) * 100) : 0,
   };
   const nav = [
     { id: "dashboard" as View, label: "Ringkasan", icon: BarChart3 },
@@ -956,10 +848,8 @@ function Dashboard({
           <CardContent className="space-y-4 text-sm text-slate-600">
             <p>
               Akun <b>{session.user.email}</b>{" "}
-              {profile
-                ? "berstatus nonaktif."
-                : "belum memiliki profil di sistem."}{" "}
-              Minta admin mengaktifkan akun Anda, lalu masuk kembali.
+              {profile ? "berstatus nonaktif." : "belum memiliki profil di sistem."} Minta admin
+              mengaktifkan akun Anda, lalu masuk kembali.
             </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => load()}>
@@ -1021,11 +911,7 @@ function Dashboard({
         />
       )}
       {view === "media" && (
-        <MediaView
-          token={token}
-          userId={session.user.id}
-          setNotice={setNotice}
-        />
+        <MediaView token={token} userId={session.user.id} setNotice={setNotice} />
       )}
       {view === "history" && (
         <HistoryView
@@ -1095,19 +981,11 @@ function Dashboard({
           >
             {!sidebarCollapsed && (
               <span className="text-left">
-                <span className="block text-xs font-medium text-emerald-100">
-                  Email Marketing
-                </span>
-                <span className="mt-1 block text-sm font-semibold">
-                  Menu Utama
-                </span>
+                <span className="block text-xs font-medium text-emerald-100">Email Marketing</span>
+                <span className="mt-1 block text-sm font-semibold">Menu Utama</span>
               </span>
             )}
-            {sidebarCollapsed ? (
-              <PanelLeftOpen size={20} />
-            ) : (
-              <PanelLeftClose size={20} />
-            )}
+            {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
           </button>
           <nav className="grid gap-1.5">
             {nav.map(({ id, label, icon: Icon }) => (
@@ -1121,7 +999,9 @@ function Dashboard({
                 title={sidebarCollapsed ? label : undefined}
                 aria-label={label}
               >
-                <span className={`grid size-8 shrink-0 place-items-center rounded-xl transition-colors ${view === id ? "bg-emerald-600 text-white" : "bg-slate-100 group-hover:bg-white"}`}>
+                <span
+                  className={`grid size-8 shrink-0 place-items-center rounded-xl transition-colors ${view === id ? "bg-emerald-600 text-white" : "bg-slate-100 group-hover:bg-white"}`}
+                >
                   <Icon size={17} />
                 </span>
                 {!sidebarCollapsed && <span>{label}</span>}
@@ -1194,13 +1074,13 @@ function Overview({
   );
   return (
     <>
-      <PageHeading title="Ringkasan" description="Aktivitas email marketing terbaru." icon={<BarChart3 />} />
+      <PageHeading
+        title="Ringkasan"
+        description="Aktivitas email marketing terbaru."
+        icon={<BarChart3 />}
+      />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat
-          label="Kredit Mailketing"
-          value={creditBalance ?? "—"}
-          icon={<Mail />}
-        />
+        <Stat label="Kredit Mailketing" value={creditBalance ?? "—"} icon={<Mail />} />
         <Stat label="Total kontak" value={contacts} icon={<Users />} />
         <Stat label="Total penerima" value={stats.total} icon={<Send />} />
         <Stat label="Berhasil terkirim" value={stats.sent} icon={<CheckCircle2 />} />
@@ -1346,48 +1226,46 @@ function Overview({
               aria-expanded={showDailyTable}
             >
               {showDailyTable ? <EyeOff size={17} /> : <Eye size={17} />}
-              {showDailyTable
-                ? "Sembunyikan detail harian"
-                : "Tampilkan detail harian"}
+              {showDailyTable ? "Sembunyikan detail harian" : "Tampilkan detail harian"}
             </Button>
           </div>
 
           {showDailyTable && (
             <div className="overflow-x-auto rounded-2xl border border-slate-100">
               <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <Th>Tanggal</Th>
-                  <Th>Terkirim</Th>
-                  <Th>Delivered</Th>
-                  <Th>Open</Th>
-                  <Th>Klik</Th>
-                  <Th>Bounce</Th>
-                  <Th>Rejected</Th>
-                  <Th>Gagal</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...dailyStats].reverse().map((row: DailyEmailStat) => (
-                  <tr key={row.day} className="border-t border-slate-100 hover:bg-slate-50/70">
-                    <Td>
-                      {new Intl.DateTimeFormat("id-ID", {
-                        weekday: "short",
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      }).format(new Date(`${row.day}T00:00:00+07:00`))}
-                    </Td>
-                    <Td>{row.sent}</Td>
-                    <Td>{row.delivered}</Td>
-                    <Td>{row.opened}</Td>
-                    <Td>{row.clicked}</Td>
-                    <Td>{row.bounced}</Td>
-                    <Td>{row.rejected}</Td>
-                    <Td>{row.failed}</Td>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <Th>Tanggal</Th>
+                    <Th>Terkirim</Th>
+                    <Th>Delivered</Th>
+                    <Th>Open</Th>
+                    <Th>Klik</Th>
+                    <Th>Bounce</Th>
+                    <Th>Rejected</Th>
+                    <Th>Gagal</Th>
                   </tr>
-                ))}
-              </tbody>
+                </thead>
+                <tbody>
+                  {[...dailyStats].reverse().map((row: DailyEmailStat) => (
+                    <tr key={row.day} className="border-t border-slate-100 hover:bg-slate-50/70">
+                      <Td>
+                        {new Intl.DateTimeFormat("id-ID", {
+                          weekday: "short",
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        }).format(new Date(`${row.day}T00:00:00+07:00`))}
+                      </Td>
+                      <Td>{row.sent}</Td>
+                      <Td>{row.delivered}</Td>
+                      <Td>{row.opened}</Td>
+                      <Td>{row.clicked}</Td>
+                      <Td>{row.bounced}</Td>
+                      <Td>{row.rejected}</Td>
+                      <Td>{row.failed}</Td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
           )}
@@ -1421,19 +1299,16 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     password: "",
   };
   const [form, setForm] = useState(emptyForm);
-  const workspaceOptions = Array.from(new Set([
-    "admin@safariman.id",
-    "noreply@ayopintar.com",
-    ...getVerifiedSenders(provider),
-  ]));
+  const workspaceOptions = Array.from(
+    new Set(["admin@safariman.id", "noreply@ayopintar.com", ...getVerifiedSenders(provider)]),
+  );
   const [contactWorkspace, setContactWorkspace] = useState(
     String(provider?.active_sender ?? "admin@safariman.id").toLowerCase(),
   );
   const isAyoPintar = contactWorkspace === "noreply@ayopintar.com";
   const workspaceContacts = allContacts.filter(
     (contact: Contact) =>
-      String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
-      contactWorkspace,
+      String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() === contactWorkspace,
   );
   const [importCategory, setImportCategory] = useState("Umum");
   const [bulkText, setBulkText] = useState("");
@@ -1447,12 +1322,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [contactPage, setContactPage] = useState(1);
   const [busy, setBusy] = useState(false);
-  const systemCategoryNames = [
-    "Blacklist",
-    "Email Tidak Valid",
-    "Inbox Penuh",
-    "Unsubscribe",
-  ];
+  const systemCategoryNames = ["Blacklist", "Email Tidak Valid", "Inbox Penuh", "Unsubscribe"];
   const contactCategories = Array.from(
     new Set(workspaceContacts.map((contact: Contact) => contact.category || "Umum")),
   ).sort() as string[];
@@ -1460,21 +1330,16 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     (category) => !systemCategoryNames.includes(category),
   );
   const systemContactCategories = systemCategoryNames.filter((category) =>
-    workspaceContacts.some(
-      (contact: Contact) => (contact.category || "Umum") === category,
-    ),
+    workspaceContacts.some((contact: Contact) => (contact.category || "Umum") === category),
   );
   const normalizedQuery = contactQuery.trim().toLowerCase();
   const filteredContacts = workspaceContacts.filter((contact: Contact) => {
     const category = contact.category || "Umum";
     const isSystemContact = systemCategoryNames.includes(category);
-    const matchesCategory =
-      contactCategoryFilter === "all" || category === contactCategoryFilter;
+    const matchesCategory = contactCategoryFilter === "all" || category === contactCategoryFilter;
     const matchesSystemFilter =
       contactSystemFilter === "all" ||
-      (contactSystemFilter === "original"
-        ? !isSystemContact
-        : category === contactSystemFilter);
+      (contactSystemFilter === "original" ? !isSystemContact : category === contactSystemFilter);
     const searchable = [
       contact.registration_code,
       contact.full_name,
@@ -1492,10 +1357,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       (!normalizedQuery || searchable.includes(normalizedQuery))
     );
   });
-  const totalContactPages = Math.max(
-    1,
-    Math.ceil(filteredContacts.length / rowsPerPage),
-  );
+  const totalContactPages = Math.max(1, Math.ceil(filteredContacts.length / rowsPerPage));
   const safeContactPage = Math.min(contactPage, totalContactPages);
   const visibleContactRows = filteredContacts.slice(
     (safeContactPage - 1) * rowsPerPage,
@@ -1509,9 +1371,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     setBusy(true);
     try {
       await api(
-        editingContactId
-          ? `/rest/v1/contacts?id=eq.${editingContactId}`
-          : "/rest/v1/contacts",
+        editingContactId ? `/rest/v1/contacts?id=eq.${editingContactId}` : "/rest/v1/contacts",
         token,
         {
           method: editingContactId ? "PATCH" : "POST",
@@ -1568,9 +1428,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
     const separators = [",", ";", "\t"] as const;
     const separator = separators.reduce((best, candidate) =>
-      firstLine.split(candidate).length > firstLine.split(best).length
-        ? candidate
-        : best,
+      firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best,
     );
     const rows: string[][] = [];
     let row: string[] = [];
@@ -1618,9 +1476,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       const extraLength = view.getUint16(pointer + 30, true);
       const commentLength = view.getUint16(pointer + 32, true);
       const localOffset = view.getUint32(pointer + 42, true);
-      const name = decoder.decode(
-        bytes.slice(pointer + 46, pointer + 46 + nameLength),
-      );
+      const name = decoder.decode(bytes.slice(pointer + 46, pointer + 46 + nameLength));
       const localNameLength = view.getUint16(localOffset + 26, true);
       const localExtraLength = view.getUint16(localOffset + 28, true);
       const dataStart = localOffset + 30 + localNameLength + localExtraLength;
@@ -1628,9 +1484,9 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       let content: Uint8Array;
       if (method === 0) content = compressed;
       else if (method === 8) {
-        const stream = new Blob([compressed]).stream().pipeThrough(
-          new DecompressionStream("deflate-raw"),
-        );
+        const stream = new Blob([compressed])
+          .stream()
+          .pipeThrough(new DecompressionStream("deflate-raw"));
         content = new Uint8Array(await new Response(stream).arrayBuffer());
       } else throw new Error("Format kompresi Excel tidak didukung.");
       entries.set(name, content);
@@ -1644,9 +1500,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     };
     const sharedXml = parseXml("xl/sharedStrings.xml");
     const shared = sharedXml
-      ? Array.from(sharedXml.getElementsByTagName("si")).map(
-          (node) => node.textContent ?? "",
-        )
+      ? Array.from(sharedXml.getElementsByTagName("si")).map((node) => node.textContent ?? "")
       : [];
     const sheetPath = Array.from(entries.keys())
       .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
@@ -1661,15 +1515,14 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
         const reference = cell.getAttribute("r") ?? "";
         const letters = reference.match(/[A-Z]+/)?.[0] ?? "A";
         let column = 0;
-        for (const letter of letters)
-          column = column * 26 + letter.charCodeAt(0) - 64;
+        for (const letter of letters) column = column * 26 + letter.charCodeAt(0) - 64;
         column--;
         const type = cell.getAttribute("t");
         const raw =
           cell.getElementsByTagName("v")[0]?.textContent ??
           cell.getElementsByTagName("t")[0]?.textContent ??
           "";
-        values[column] = type === "s" ? shared[Number(raw)] ?? "" : raw;
+        values[column] = type === "s" ? (shared[Number(raw)] ?? "") : raw;
       });
       return values;
     });
@@ -1706,8 +1559,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       const rows = sheet
         .slice(1)
         .map((values) => {
-          const valueFor = (header: string) =>
-            String(values[headers.indexOf(header)] ?? "").trim();
+          const valueFor = (header: string) => String(values[headers.indexOf(header)] ?? "").trim();
           const contact: Record<string, unknown> = {
             created_by: userId,
             source: file.name.toLowerCase().endsWith(".xlsx") ? "excel" : "csv",
@@ -1782,8 +1634,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       const parsed = parseCsv(bulkText);
       const firstIsHeader = isAyoPintar
         ? ["nis", "email"].includes(normalizeHeader(parsed[0]?.[0]))
-        : normalizeHeader(parsed[0]?.[0]) === "kode" &&
-          normalizeHeader(parsed[0]?.[2]) === "email";
+        : normalizeHeader(parsed[0]?.[0]) === "kode" && normalizeHeader(parsed[0]?.[2]) === "email";
       const dataRows = firstIsHeader ? parsed.slice(1) : parsed;
       const invalidLines: number[] = [];
       const seen = new Set<string>();
@@ -1807,22 +1658,15 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             let password = "";
 
             if (startsWithEmail && cells.length >= 8) {
-              [email, mobile, fullName, jurusan, level, kelas, username, password] =
-                cells;
+              [email, mobile, fullName, jurusan, level, kelas, username, password] = cells;
               email = email.toLowerCase();
               nis = username;
             } else {
-              [nis, no, fullName, email, level, kelas, jurusan, username, password] =
-                cells;
+              [nis, no, fullName, email, level, kelas, jurusan, username, password] = cells;
               email = email.toLowerCase();
             }
 
-            if (
-              !fullName ||
-              !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-              !username ||
-              !password
-            ) {
+            if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !username || !password) {
               invalidLines.push(lineNumber);
               return null;
             }
@@ -1852,11 +1696,16 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           }
           const registrationCode = String(values[0] ?? "").trim();
           const mobile = String(values.at(-1) ?? "").trim();
-          const email = String(values.at(-2) ?? "").trim().toLowerCase();
+          const email = String(values.at(-2) ?? "")
+            .trim()
+            .toLowerCase();
           const fullName = values.slice(1, -2).join(", ").trim();
           if (
-            values.length < 4 || !registrationCode || !fullName ||
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !mobile
+            values.length < 4 ||
+            !registrationCode ||
+            !fullName ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+            !mobile
           ) {
             invalidLines.push(lineNumber);
             return null;
@@ -1900,7 +1749,10 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           : `${rows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
       });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Input massal gagal." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Input massal gagal.",
+      });
     } finally {
       setBusy(false);
     }
@@ -1909,21 +1761,26 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   const deleteContacts = async (ids: string[]) => {
     if (
       !ids.length ||
-      !window.confirm(`Hapus ${ids.length} kontak yang dipilih? Tindakan ini tidak dapat dibatalkan.`)
-    ) return;
+      !window.confirm(
+        `Hapus ${ids.length} kontak yang dipilih? Tindakan ini tidak dapat dibatalkan.`,
+      )
+    )
+      return;
     setBusy(true);
     try {
       for (let i = 0; i < ids.length; i += 100)
-        await api(
-          `/rest/v1/contacts?id=in.(${ids.slice(i, i + 100).join(",")})`,
-          token,
-          { method: "DELETE", headers: { Prefer: "return=minimal" } },
-        );
+        await api(`/rest/v1/contacts?id=in.(${ids.slice(i, i + 100).join(",")})`, token, {
+          method: "DELETE",
+          headers: { Prefer: "return=minimal" },
+        });
       setSelectedContactIds([]);
       await reload();
       setNotice({ success: true, message: `${ids.length} kontak berhasil dihapus.` });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Kontak gagal dihapus." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Kontak gagal dihapus.",
+      });
     } finally {
       setBusy(false);
     }
@@ -1934,9 +1791,12 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     const count = workspaceContacts.filter(
       (contact: Contact) => (contact.category || "Umum") === deleteCategory,
     ).length;
-    if (!window.confirm(
-      `Hapus kategori “${deleteCategory}” beserta ${count} kontak di dalamnya? Tindakan ini tidak dapat dibatalkan.`,
-    )) return;
+    if (
+      !window.confirm(
+        `Hapus kategori “${deleteCategory}” beserta ${count} kontak di dalamnya? Tindakan ini tidak dapat dibatalkan.`,
+      )
+    )
+      return;
     setBusy(true);
     try {
       const removedCategory = deleteCategory;
@@ -1948,9 +1808,15 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       setDeleteCategory("");
       setSelectedContactIds([]);
       await reload();
-      setNotice({ success: true, message: `Kategori “${removedCategory}” dan seluruh kontaknya berhasil dihapus.` });
+      setNotice({
+        success: true,
+        message: `Kategori “${removedCategory}” dan seluruh kontaknya berhasil dihapus.`,
+      });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Kategori gagal dihapus." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Kategori gagal dihapus.",
+      });
     } finally {
       setBusy(false);
     }
@@ -1961,8 +1827,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     setForm({
       registration_code: contact.registration_code ?? "",
       full_name:
-        contact.full_name ??
-        [contact.first_name, contact.last_name].filter(Boolean).join(" "),
+        contact.full_name ?? [contact.first_name, contact.last_name].filter(Boolean).join(" "),
       email: contact.email,
       mobile: contact.mobile ?? "",
       category: contact.category ?? "Umum",
@@ -2020,7 +1885,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     }
   };
 
-    const moveSelectedContacts = async () => {
+  const moveSelectedContacts = async () => {
     if (!selectedContactIds.length || !moveCategory.trim()) return;
     setBusy(true);
     try {
@@ -2040,7 +1905,10 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       await reload();
       setNotice({ success: true, message: `${count} kontak berhasil dipindahkan kategori.` });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal memindahkan kontak." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal memindahkan kontak.",
+      });
     } finally {
       setBusy(false);
     }
@@ -2051,11 +1919,10 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     try {
       const isBlocked = (contact.status ?? "active") !== "active";
       if (isBlocked) {
-        await api(
-          `/rest/v1/suppressions?email=eq.${encodeURIComponent(contact.email)}`,
-          token,
-          { method: "DELETE", headers: { Prefer: "return=minimal" } },
-        );
+        await api(`/rest/v1/suppressions?email=eq.${encodeURIComponent(contact.email)}`, token, {
+          method: "DELETE",
+          headers: { Prefer: "return=minimal" },
+        });
         await api(`/rest/v1/contacts?id=eq.${contact.id}`, token, {
           method: "PATCH",
           body: JSON.stringify({ status: "active", unsubscribed_at: null }),
@@ -2083,20 +1950,20 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       await reload();
       setNotice({
         success: true,
-        message: isBlocked
-          ? "Kontak diaktifkan kembali."
-          : "Kontak dimasukkan ke blacklist.",
+        message: isBlocked ? "Kontak diaktifkan kembali." : "Kontak dimasukkan ke blacklist.",
       });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Status kontak gagal diubah." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Status kontak gagal diubah.",
+      });
     } finally {
       setBusy(false);
     }
   };
 
   const exportContacts = () => {
-    const escape = (value: unknown) =>
-      `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
     const rows = [
       ["Kode", "Daftar Nama", "Email", "WhatsApp", "Kategori", "Status"],
       ...filteredContacts.map((contact: Contact) => [
@@ -2119,7 +1986,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
 
   return (
     <>
-      <PageHeading title="Kontak" description="Kelola penerima, kategori, dan data personalisasi." icon={<Users />} />
+      <PageHeading
+        title="Kontak"
+        description="Kelola penerima, kategori, dan data personalisasi."
+        icon={<Users />}
+      />
       <Card className="border-emerald-200 bg-emerald-50/40">
         <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-end sm:p-5">
           <Field label="Workspace kontak aktif">
@@ -2141,7 +2012,8 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             </select>
           </Field>
           <div className="rounded-xl bg-white px-4 py-3 text-sm text-emerald-800 shadow-sm">
-            <b>{workspaceContacts.length}</b> kontak di workspace {getSenderDefaultName(contactWorkspace)}
+            <b>{workspaceContacts.length}</b> kontak di workspace{" "}
+            {getSenderDefaultName(contactWorkspace)}
           </div>
         </CardContent>
       </Card>
@@ -2149,8 +2021,16 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-6">
           {isAyoPintar ? (
             <>
-              <Input placeholder="NIS" value={form.nis} onChange={(e) => setForm({ ...form, nis: e.target.value })} />
-              <Input placeholder="No" value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} />
+              <Input
+                placeholder="NIS"
+                value={form.nis}
+                onChange={(e) => setForm({ ...form, nis: e.target.value })}
+              />
+              <Input
+                placeholder="No"
+                value={form.no}
+                onChange={(e) => setForm({ ...form, no: e.target.value })}
+              />
             </>
           ) : (
             <Input
@@ -2172,14 +2052,38 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           />
           {isAyoPintar ? (
             <>
-              <Input placeholder="Level" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} />
-              <Input placeholder="Kelas" value={form.kelas} onChange={(e) => setForm({ ...form, kelas: e.target.value })} />
-              <Input placeholder="Jurusan" value={form.jurusan} onChange={(e) => setForm({ ...form, jurusan: e.target.value })} />
-              <Input placeholder="Username CBT" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-              <Input placeholder="Password CBT" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              <Input
+                placeholder="Level"
+                value={form.level}
+                onChange={(e) => setForm({ ...form, level: e.target.value })}
+              />
+              <Input
+                placeholder="Kelas"
+                value={form.kelas}
+                onChange={(e) => setForm({ ...form, kelas: e.target.value })}
+              />
+              <Input
+                placeholder="Jurusan"
+                value={form.jurusan}
+                onChange={(e) => setForm({ ...form, jurusan: e.target.value })}
+              />
+              <Input
+                placeholder="Username CBT"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+              />
+              <Input
+                placeholder="Password CBT"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
             </>
           ) : (
-            <Input placeholder="WhatsApp" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+            <Input
+              placeholder="WhatsApp"
+              value={form.mobile}
+              onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+            />
           )}
           <Input
             placeholder="Kategori"
@@ -2216,9 +2120,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               hidden
               type="file"
               accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              onChange={(e) =>
-                e.target.files?.[0] && importContacts(e.target.files[0])
-              }
+              onChange={(e) => e.target.files?.[0] && importContacts(e.target.files[0])}
             />
           </label>
           <Button type="button" variant="outline" onClick={downloadTemplate}>
@@ -2226,13 +2128,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           </Button>
         </CardContent>
       </Card>
- 
       <Card>
         <CardHeader>
           <CardTitle>Input Kontak Massal</CardTitle>
           <p className="text-sm text-slate-500">
-            Tempel beberapa kontak. Gunakan satu baris untuk satu kontak tanpa
-            header.
+            Tempel beberapa kontak. Gunakan satu baris untuk satu kontak tanpa header.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -2281,12 +2181,13 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             </Button>
           </div>
         </CardContent>
-      </Card>     <Card>
+      </Card>{" "}
+      <Card>
         <CardHeader>
           <CardTitle>Kelola dan Hapus Kontak</CardTitle>
           <p className="text-sm text-slate-500">
-            Pilih kontak dari tabel untuk menghapus beberapa data sekaligus,
-            atau hapus seluruh kontak berdasarkan kategori.
+            Pilih kontak dari tabel untuk menghapus beberapa data sekaligus, atau hapus seluruh
+            kontak berdasarkan kategori.
           </p>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -2298,11 +2199,22 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             <option value="">Pilih kategori yang akan dihapus</option>
             {originalContactCategories.map((category) => (
               <option key={category} value={category}>
-                {category} ({workspaceContacts.filter((contact: Contact) => (contact.category || "Umum") === category).length} kontak)
+                {category} (
+                {
+                  workspaceContacts.filter(
+                    (contact: Contact) => (contact.category || "Umum") === category,
+                  ).length
+                }{" "}
+                kontak)
               </option>
             ))}
           </select>
-          <Button type="button" variant="destructive" disabled={busy || !deleteCategory} onClick={deleteWholeCategory}>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || !deleteCategory}
+            onClick={deleteWholeCategory}
+          >
             <Trash2 /> Hapus Kategori & Kontak
           </Button>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
@@ -2326,10 +2238,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       }}
                     >
                       {category} (
-                      {workspaceContacts.filter(
-                        (contact: Contact) =>
-                          (contact.category || "Umum") === category,
-                      ).length}
+                      {
+                        workspaceContacts.filter(
+                          (contact: Contact) => (contact.category || "Umum") === category,
+                        ).length
+                      }
                       )
                     </button>
                   ))
@@ -2358,7 +2271,12 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                 ? "Batalkan Semua"
                 : "Pilih Semua Kontak"}
             </Button>
-            <Button type="button" variant="destructive" disabled={busy || !selectedContactIds.length} onClick={() => deleteContacts(selectedContactIds)}>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy || !selectedContactIds.length}
+              onClick={() => deleteContacts(selectedContactIds)}
+            >
               <Trash2 /> Hapus Terpilih ({selectedContactIds.length})
             </Button>
             <Input
@@ -2429,10 +2347,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               {systemContactCategories.map((category) => (
                 <option key={category} value={category}>
                   {category} (
-                  {workspaceContacts.filter(
-                    (contact: Contact) =>
-                      (contact.category || "Umum") === category,
-                  ).length}
+                  {
+                    workspaceContacts.filter(
+                      (contact: Contact) => (contact.category || "Umum") === category,
+                    ).length
+                  }
                   )
                 </option>
               ))}
@@ -2470,15 +2389,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                         )
                       }
                       onChange={(e) => {
-                        const pageIds = visibleContactRows.map(
-                          (contact: Contact) => contact.id,
-                        );
+                        const pageIds = visibleContactRows.map((contact: Contact) => contact.id);
                         setSelectedContactIds(
                           e.target.checked
                             ? Array.from(new Set([...selectedContactIds, ...pageIds]))
-                            : selectedContactIds.filter(
-                                (id) => !pageIds.includes(id),
-                              ),
+                            : selectedContactIds.filter((id) => !pageIds.includes(id)),
                         );
                       }}
                     />
@@ -2522,8 +2437,14 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       <Td>
                         {isAyoPintar ? (
                           <div className="space-y-1 text-xs">
-                            <div>{c.custom_fields?.level || "—"} · Kelas {c.custom_fields?.kelas || "—"} · {c.custom_fields?.jurusan || "—"}</div>
-                            <div className="font-medium">{c.custom_fields?.username || "—"} / {c.custom_fields?.password || "—"}</div>
+                            <div>
+                              {c.custom_fields?.level || "—"} · Kelas{" "}
+                              {c.custom_fields?.kelas || "—"} · {c.custom_fields?.jurusan || "—"}
+                            </div>
+                            <div className="font-medium">
+                              {c.custom_fields?.username || "—"} /{" "}
+                              {c.custom_fields?.password || "—"}
+                            </div>
                           </div>
                         ) : (
                           c.mobile || "—"
@@ -2536,16 +2457,39 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       </Td>
                       <Td>
                         <div className="flex gap-1">
-                          <Button type="button" size="sm" variant="outline" onClick={() => copyContact(c)}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => copyContact(c)}
+                          >
                             <Copy /> Salin
                           </Button>
-                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => editContact(c)}
+                          >
                             <Pencil /> Edit
                           </Button>
-                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => toggleSuppression(c)}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => toggleSuppression(c)}
+                          >
                             {(c.status ?? "active") === "active" ? "Blacklist" : "Aktifkan"}
                           </Button>
-                          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => deleteContacts([c.id])}
+                          >
                             <Trash2 /> Hapus
                           </Button>
                         </div>
@@ -2604,23 +2548,48 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-slate-400">{isAyoPintar ? "Username CBT" : "WhatsApp"}</dt>
+                      <dt className="text-slate-400">
+                        {isAyoPintar ? "Username CBT" : "WhatsApp"}
+                      </dt>
                       <dd className="mt-1 font-medium text-slate-700">
                         {isAyoPintar ? c.custom_fields?.username || "—" : c.mobile || "—"}
                       </dd>
                     </div>
                   </dl>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <Button type="button" size="sm" variant="outline" onClick={() => copyContact(c)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyContact(c)}
+                    >
                       <Copy /> Salin
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => editContact(c)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => editContact(c)}
+                    >
                       <Pencil /> Edit
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => toggleSuppression(c)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => toggleSuppression(c)}
+                    >
                       {(c.status ?? "active") === "active" ? "Blokir" : "Aktif"}
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => deleteContacts([c.id])}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => deleteContacts([c.id])}
+                    >
                       <Trash2 /> Hapus
                     </Button>
                   </div>
@@ -2635,8 +2604,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
 
           <div className="flex flex-col gap-3 border-t bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-center text-xs text-slate-500 sm:text-left">
-              Halaman {safeContactPage} dari {totalContactPages} ·{" "}
-              {filteredContacts.length} kontak
+              Halaman {safeContactPage} dari {totalContactPages} · {filteredContacts.length} kontak
             </p>
             <div className="grid grid-cols-2 gap-2">
               <Button
@@ -2653,9 +2621,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                 variant="outline"
                 size="sm"
                 disabled={safeContactPage >= totalContactPages}
-                onClick={() =>
-                  setContactPage((page) => Math.min(totalContactPages, page + 1))
-                }
+                onClick={() => setContactPage((page) => Math.min(totalContactPages, page + 1))}
               >
                 Berikutnya
               </Button>
@@ -2667,14 +2633,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   );
 }
 
-function Templates({
-  templates,
-  contacts,
-  token,
-  userId,
-  reload,
-  setNotice,
-}: any) {
+function Templates({ templates, contacts, token, userId, reload, setNotice }: any) {
   const [f, setF] = useState({
     name: "",
     subject: "",
@@ -2693,13 +2652,11 @@ function Templates({
   ).sort() as string[];
   const filteredTemplates = templates.filter((template: Template) => {
     const matchesCategory =
-      templateCategory === "all" ||
-      (template.category || "Umum") === templateCategory;
+      templateCategory === "all" || (template.category || "Umum") === templateCategory;
     const query = templateSearch.trim().toLowerCase();
     return (
       matchesCategory &&
-      (!query ||
-        `${template.name} ${template.subject}`.toLowerCase().includes(query))
+      (!query || `${template.name} ${template.subject}`.toLowerCase().includes(query))
     );
   });
   const canonicalKeywords = [
@@ -2720,11 +2677,7 @@ function Templates({
     "category",
   ]);
   const customKeywords = Array.from(
-    new Set(
-      contacts.flatMap((contact: Contact) =>
-        Object.keys(contact.custom_fields ?? {}),
-      ),
-    ),
+    new Set(contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {}))),
   ).filter((keyword) => !legacyAliases.has(keyword));
   const keywords = [
     ...canonicalKeywords,
@@ -2745,10 +2698,7 @@ function Templates({
   const renderPreview = (value: string) =>
     value.replace(/{{\s*([^{}]+)\s*}}/g, (_, key) => sampleVariables[key] ?? `{{${key}}}`);
 
-  const insertKeyword = (
-    keyword: string,
-    target: "subject" | "html_content",
-  ) => {
+  const insertKeyword = (keyword: string, target: "subject" | "html_content") => {
     const value = `{{${keyword}}}`;
     setF((current) => ({
       ...current,
@@ -2799,19 +2749,11 @@ function Templates({
           });
         }
       }
-      await api(
-        editingId
-          ? `/rest/v1/templates?id=eq.${editingId}`
-          : "/rest/v1/templates",
-        token,
-        {
-          method: editingId ? "PATCH" : "POST",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify(
-            editingId ? f : { ...f, created_by: userId },
-          ),
-        },
-      );
+      await api(editingId ? `/rest/v1/templates?id=eq.${editingId}` : "/rest/v1/templates", token, {
+        method: editingId ? "PATCH" : "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify(editingId ? f : { ...f, created_by: userId }),
+      });
       const wasEditing = Boolean(editingId);
       await reload();
       resetEditor();
@@ -2847,7 +2789,10 @@ function Templates({
       await reload();
       setNotice({ success: true, message: "Template berhasil diduplikat." });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal menduplikat template." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal menduplikat template.",
+      });
     } finally {
       setSaving(false);
     }
@@ -2863,7 +2808,10 @@ function Templates({
       await reload();
       setNotice({ success: true, message: "Template berhasil dihapus." });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Gagal menghapus template." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal menghapus template.",
+      });
     }
   };
 
@@ -2883,20 +2831,25 @@ function Templates({
       );
       setVersions((current) => ({ ...current, [templateId]: rows }));
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat.",
+      });
     }
   };
 
   return (
     <>
-      <PageHeading title="Template Email" description="Buat desain HTML dan lihat hasil personalisasi secara langsung." icon={<LayoutTemplate />} />
+      <PageHeading
+        title="Template Email"
+        description="Buat desain HTML dan lihat hasil personalisasi secara langsung."
+        icon={<LayoutTemplate />}
+      />
       <Card>
         <CardHeader className="border-b border-slate-100">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle>
-                {editingId ? "Edit Template" : "Buat Template Baru"}
-              </CardTitle>
+              <CardTitle>{editingId ? "Edit Template" : "Buat Template Baru"}</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
                 {editingId
                   ? "Ubah isi template lalu simpan perubahan."
@@ -2912,10 +2865,7 @@ function Templates({
         </CardHeader>
         <CardContent className="space-y-4 p-5">
           <Field label="Nama template">
-            <Input
-              value={f.name}
-              onChange={(e) => setF({ ...f, name: e.target.value })}
-            />
+            <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Kategori template">
@@ -2927,10 +2877,7 @@ function Templates({
             </Field>
           </div>
           <Field label="Subjek">
-            <Input
-              value={f.subject}
-              onChange={(e) => setF({ ...f, subject: e.target.value })}
-            />
+            <Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} />
           </Field>
           <div className="space-y-2">
             <Label>Keyword data kontak</Label>
@@ -2962,8 +2909,8 @@ function Templates({
               ))}
             </div>
             <p className="text-xs text-slate-500">
-              Pilihan utama mengikuti field kontak. Keyword lama tetap didukung
-              di template yang sudah tersimpan.
+              Pilihan utama mengikuti field kontak. Keyword lama tetap didukung di template yang
+              sudah tersimpan.
             </p>
           </div>
           <Field label="HTML">
@@ -2975,11 +2922,14 @@ function Templates({
             />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={save}
-              disabled={saving || !f.name || !f.subject || !f.html_content}
-            >
-              {saving ? <Loader2 className="animate-spin" /> : editingId ? <Pencil /> : <LayoutTemplate />}
+            <Button onClick={save} disabled={saving || !f.name || !f.subject || !f.html_content}>
+              {saving ? (
+                <Loader2 className="animate-spin" />
+              ) : editingId ? (
+                <Pencil />
+              ) : (
+                <LayoutTemplate />
+              )}
               {editingId ? "Simpan Perubahan" : "Simpan Template"}
             </Button>
             {editingId && (
@@ -2987,11 +2937,7 @@ function Templates({
                 Batal Edit
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPreview(!preview)}
-            >
+            <Button type="button" variant="outline" onClick={() => setPreview(!preview)}>
               {preview ? "Sembunyikan Preview" : "Tampilkan Preview"}
             </Button>
           </div>
@@ -3001,9 +2947,7 @@ function Templates({
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Preview Email
                 </p>
-                <p className="mt-1 font-semibold">
-                  {renderPreview(f.subject) || "Tanpa subjek"}
-                </p>
+                <p className="mt-1 font-semibold">{renderPreview(f.subject) || "Tanpa subjek"}</p>
               </div>
               <iframe
                 title="Preview template"
@@ -3029,7 +2973,9 @@ function Templates({
           >
             <option value="all">Semua kategori template</option>
             {templateCategories.map((category) => (
-              <option key={category} value={category}>{category}</option>
+              <option key={category} value={category}>
+                {category}
+              </option>
             ))}
           </select>
         </CardContent>
@@ -3046,17 +2992,23 @@ function Templates({
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => editTemplate(t)}>
+                  <Pencil /> Edit Template
+                </Button>
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => editTemplate(t)}
+                  variant="outline"
+                  onClick={() => duplicateTemplate(t)}
                 >
-                  <Pencil /> Edit Template
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => duplicateTemplate(t)}>
                   Duplikat
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => toggleVersions(t.id)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => toggleVersions(t.id)}
+                >
                   {versions[t.id] ? "Tutup Versi" : "Riwayat Versi"}
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => deleteTemplate(t)}>
@@ -3066,9 +3018,7 @@ function Templates({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                  setSavedPreview(savedPreview === t.id ? null : t.id)
-                }
+                  onClick={() => setSavedPreview(savedPreview === t.id ? null : t.id)}
                 >
                   {savedPreview === t.id ? "Tutup Preview" : "Lihat Preview"}
                 </Button>
@@ -3118,15 +3068,7 @@ function Templates({
   );
 }
 
-function Compose({
-  contacts,
-  templates,
-  provider,
-  invoke,
-  reload,
-  sync,
-  setNotice,
-}: any) {
+function Compose({ contacts, templates, provider, invoke, reload, sync, setNotice }: any) {
   const [f, setF] = useState({
       name: "",
       from_name: "Safar Iman",
@@ -3139,47 +3081,41 @@ function Compose({
     [selected, setSelected] = useState<string[]>([]),
     [manual, setManual] = useState(""),
     [categoryFilter, setCategoryFilter] = useState("all"),
+    [composeMode, setComposeMode] = useState<"bulk" | "manual">("bulk"),
     [busy, setBusy] = useState(false),
     [syncingSenders, setSyncingSenders] = useState(false),
     [preview, setPreview] = useState(true),
-    [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">(
-      "desktop",
-    ),
+    [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop"),
     [manualMessage, setManualMessage] = useState({
       recipient_name: "",
       recipient_email: "",
       subject: "",
       html_content: "",
     }),
-    [manualPreviewDevice, setManualPreviewDevice] = useState<
-      "desktop" | "mobile"
-    >("desktop"),
+    [manualPreviewDevice, setManualPreviewDevice] = useState<"desktop" | "mobile">("desktop"),
     [manualSending, setManualSending] = useState(false);
   const createIdempotencyKey = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random()}`;
-  const [idempotencyKey, setIdempotencyKey] = useState(
-    createIdempotencyKey,
-  );
+  const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const senders = getVerifiedSenders(provider);
-  const activeSender = String(provider?.active_sender ?? "").trim().toLowerCase();
+  const activeSender = String(provider?.active_sender ?? "")
+    .trim()
+    .toLowerCase();
   const workspaceContacts = contacts.filter(
     (contact: Contact) =>
       String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
       String(f.from_email || activeSender || "admin@safariman.id").toLowerCase(),
   );
   const categories = Array.from(
-    new Set(
-      workspaceContacts.map((contact: Contact) => contact.category || "Umum"),
-    ),
+    new Set(workspaceContacts.map((contact: Contact) => contact.category || "Umum")),
   ).sort() as string[];
   const visibleContacts =
     categoryFilter === "all"
       ? workspaceContacts
       : workspaceContacts.filter(
-          (contact: Contact) =>
-            (contact.category || "Umum") === categoryFilter,
+          (contact: Contact) => (contact.category || "Umum") === categoryFilter,
         );
   const refreshSenders = async () => {
     setSyncingSenders(true);
@@ -3193,14 +3129,8 @@ function Compose({
     refreshSenders();
   }, []);
   useEffect(() => {
-    const preferred =
-      activeSender && senders.includes(activeSender)
-        ? activeSender
-        : senders[0];
-    if (
-      preferred &&
-      (!f.from_email || !senders.includes(f.from_email))
-    ) {
+    const preferred = activeSender && senders.includes(activeSender) ? activeSender : senders[0];
+    if (preferred && (!f.from_email || !senders.includes(f.from_email))) {
       setF((current) => ({
         ...current,
         from_email: preferred,
@@ -3215,10 +3145,7 @@ function Compose({
 
   const recipients = useMemo(() => {
     const picked = workspaceContacts
-      .filter(
-        (c: Contact) =>
-          selected.includes(c.id) && (c.status ?? "active") === "active",
-      )
+      .filter((c: Contact) => selected.includes(c.id) && (c.status ?? "active") === "active")
       .map((c: Contact) => ({
         contact_id: c.id,
         email: c.email,
@@ -3227,15 +3154,9 @@ function Compose({
           registration_code: c.registration_code ?? "",
           kode_pendaftaran: c.registration_code ?? "",
           kode: c.registration_code ?? "",
-          full_name:
-            c.full_name ??
-            [c.first_name, c.last_name].filter(Boolean).join(" "),
-          nama:
-            c.full_name ??
-            [c.first_name, c.last_name].filter(Boolean).join(" "),
-          daftar_nama:
-            c.full_name ??
-            [c.first_name, c.last_name].filter(Boolean).join(" "),
+          full_name: c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(" "),
+          nama: c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(" "),
+          daftar_nama: c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(" "),
           whatsapp: c.mobile ?? "",
           first_name: c.first_name ?? c.full_name ?? "",
           last_name: c.last_name ?? "",
@@ -3250,9 +3171,7 @@ function Compose({
       .map((e: string) => e.trim())
       .filter(Boolean)
       .map((email: string) => ({ email, variables: { email } }));
-    return [...picked, ...extra].filter(
-      (r, i, a) => a.findIndex((x) => x.email === r.email) === i,
-    );
+    return [...picked, ...extra].filter((r, i, a) => a.findIndex((x) => x.email === r.email) === i);
   }, [selected, manual, workspaceContacts]);
   const previewContact =
     workspaceContacts.find((contact: Contact) => selected.includes(contact.id)) ??
@@ -3263,26 +3182,17 @@ function Compose({
     registration_code: previewContact?.registration_code || "HXP-001",
     nama:
       previewContact?.full_name ||
-      [previewContact?.first_name, previewContact?.last_name]
-        .filter(Boolean)
-        .join(" ") ||
+      [previewContact?.first_name, previewContact?.last_name].filter(Boolean).join(" ") ||
       "Nama Penerima",
     daftar_nama:
       previewContact?.full_name ||
-      [previewContact?.first_name, previewContact?.last_name]
-        .filter(Boolean)
-        .join(" ") ||
+      [previewContact?.first_name, previewContact?.last_name].filter(Boolean).join(" ") ||
       "Nama Penerima",
     full_name:
       previewContact?.full_name ||
-      [previewContact?.first_name, previewContact?.last_name]
-        .filter(Boolean)
-        .join(" ") ||
+      [previewContact?.first_name, previewContact?.last_name].filter(Boolean).join(" ") ||
       "Nama Penerima",
-    first_name:
-      previewContact?.first_name ||
-      previewContact?.full_name ||
-      "Nama Penerima",
+    first_name: previewContact?.first_name || previewContact?.full_name || "Nama Penerima",
     last_name: previewContact?.last_name || "",
     email: previewContact?.email || "penerima@email.com",
     whatsapp: previewContact?.mobile || "081234567890",
@@ -3357,8 +3267,7 @@ function Compose({
     } catch (error) {
       setNotice({
         success: false,
-        message:
-          error instanceof Error ? error.message : "Email manual gagal dikirim.",
+        message: error instanceof Error ? error.message : "Email manual gagal dikirim.",
       });
     } finally {
       setManualSending(false);
@@ -3409,17 +3318,14 @@ function Compose({
             from_email: f.from_email,
             subject: f.subject,
             html_content: f.html_content,
-            scheduled_at: f.scheduled_at
-              ? new Date(f.scheduled_at).toISOString()
-              : null,
+            scheduled_at: f.scheduled_at ? new Date(f.scheduled_at).toISOString() : null,
             attachments: f.attachments.filter(Boolean),
           },
           recipients,
         });
         if (d.success) {
           setIdempotencyKey(createIdempotencyKey());
-          if (!f.scheduled_at)
-            await invoke({ action: "process-queue" });
+          if (!f.scheduled_at) await invoke({ action: "process-queue" });
         }
         await reload();
       }
@@ -3436,8 +3342,47 @@ function Compose({
   };
   return (
     <>
-      <PageHeading title="Buat Kampanye" description="Pilih penerima, susun email, lalu kirim sekarang atau terjadwal." icon={<Send />} />
-      {getCreditBalance(provider) !== undefined &&
+      <PageHeading
+        title="Buat Kampanye"
+        description="Pilih penerima, susun email, lalu kirim sekarang atau terjadwal."
+        icon={<Send />}
+      />
+      <div
+        className="grid grid-cols-2 gap-1 rounded-2xl border bg-slate-100 p-1.5 shadow-sm sm:w-fit"
+        role="tablist"
+        aria-label="Jenis pengiriman email"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={composeMode === "bulk"}
+          className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all sm:min-w-44 ${
+            composeMode === "bulk"
+              ? "bg-white text-emerald-700 shadow-sm"
+              : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+          }`}
+          onClick={() => setComposeMode("bulk")}
+        >
+          <Users size={17} />
+          Kirim Massal
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={composeMode === "manual"}
+          className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all sm:min-w-44 ${
+            composeMode === "manual"
+              ? "bg-white text-emerald-700 shadow-sm"
+              : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+          }`}
+          onClick={() => setComposeMode("manual")}
+        >
+          <Mail size={17} />
+          Kirim Manual
+        </button>
+      </div>
+      {composeMode === "bulk" &&
+        getCreditBalance(provider) !== undefined &&
         recipients.length > (getCreditBalance(provider) ?? 0) && (
           <NoticeBox
             notice={{
@@ -3446,510 +3391,490 @@ function Compose({
             }}
           />
         )}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Mail size={20} className="text-emerald-600" />
-            Kirim Email Manual
-          </CardTitle>
-          <p className="text-sm text-slate-500">
-            Kirim satu email langsung dengan nama penerima dan desain HTML sendiri.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Nama pengirim">
-              <Input
-                placeholder="Contoh: Tim Safar Iman"
-                value={f.from_name}
-                onChange={(event) =>
-                  setF({ ...f, from_name: event.target.value })
-                }
-              />
-            </Field>
-            <Field label="Sender terverifikasi">
-              <div className="flex gap-2">
-                <select
-                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
-                  value={f.from_email}
-                  onChange={(event) => {
-                    const email = event.target.value;
-                    setF({
-                      ...f,
-                      from_email: email,
-                      from_name: getSenderDefaultName(email, f.from_name),
-                    });
-                  }}
-                >
-                  <option value="">
-                    {syncingSenders ? "Memuat sender..." : "Pilih sender"}
-                  </option>
-                  {senders.map((email: string) => (
-                    <option key={email} value={email}>
-                      {email}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={refreshSenders}
-                  disabled={syncingSenders}
-                  title="Sinkronkan sender dari Mailketing"
-                  aria-label="Sinkronkan sender"
-                >
-                  <RefreshCw
-                    size={16}
-                    className={syncingSenders ? "animate-spin" : ""}
-                  />
-                </Button>
-              </div>
-            </Field>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Nama penerima">
-              <Input
-                placeholder="Contoh: Rizky Arif Fauzi"
-                value={manualMessage.recipient_name}
-                onChange={(event) =>
-                  setManualMessage({
-                    ...manualMessage,
-                    recipient_name: event.target.value,
-                  })
-                }
-              />
-            </Field>
-            <Field label="Email penerima">
-              <Input
-                type="email"
-                inputMode="email"
-                placeholder="nama@email.com"
-                value={manualMessage.recipient_email}
-                onChange={(event) =>
-                  setManualMessage({
-                    ...manualMessage,
-                    recipient_email: event.target.value,
-                  })
-                }
-              />
-            </Field>
-          </div>
-          <Field label="Subjek email">
-            <Input
-              placeholder="Masukkan subjek email"
-              value={manualMessage.subject}
-              onChange={(event) =>
-                setManualMessage({
-                  ...manualMessage,
-                  subject: event.target.value,
-                })
-              }
-            />
-          </Field>
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <div className="overflow-hidden rounded-xl border bg-slate-950">
-              <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Body email (HTML)
-              </div>
-              <Textarea
-                rows={16}
-                className="min-h-[400px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
-                placeholder={'<h2>Halo {{nama}}</h2>\n<p>Tulis isi email di sini.</p>'}
-                value={manualMessage.html_content}
-                onChange={(event) =>
-                  setManualMessage({
-                    ...manualMessage,
-                    html_content: event.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Preview email
-                  </p>
-                  <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
-                    {renderManualPreview(manualMessage.subject) || "Tanpa subjek"}
-                  </p>
-                </div>
-                <div className="flex rounded-lg bg-slate-100 p-1">
-                  {(["desktop", "mobile"] as const).map((device) => (
-                    <button
-                      key={device}
-                      type="button"
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                        manualPreviewDevice === device
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500"
-                      }`}
-                      onClick={() => setManualPreviewDevice(device)}
-                    >
-                      {device}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="overflow-auto p-3 sm:p-5">
-                <iframe
-                  title="Preview email manual"
-                  sandbox=""
-                  srcDoc={
-                    manualMessage.html_content.trim()
-                      ? renderManualPreview(manualMessage.html_content)
-                      : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan body HTML untuk melihat desain email.</p></body></html>'
-                  }
-                  className={`mx-auto h-[400px] bg-white shadow-sm transition-[width] duration-200 ${
-                    manualPreviewDevice === "mobile"
-                      ? "w-[375px] max-w-full"
-                      : "w-full"
-                  }`}
-                />
-              </div>
-              <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
-                Gunakan <code>{"{{nama}}"}</code> dan <code>{"{{email}}"}</code> untuk data penerima.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
-            <p className="text-xs text-slate-500">
-              Dikirim dari <b className="text-slate-700">{f.from_email || "sender belum dipilih"}</b>.
+      {composeMode === "manual" && (
+        <Card role="tabpanel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Mail size={20} className="text-emerald-600" />
+              Kirim Email Manual
+            </CardTitle>
+            <p className="text-sm text-slate-500">
+              Kirim satu email langsung dengan nama penerima dan desain HTML sendiri.
             </p>
-            <Button
-              type="button"
-              className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={
-                manualSending ||
-                !f.from_email ||
-                !manualMessage.recipient_name.trim() ||
-                !manualMessage.recipient_email.trim() ||
-                !manualMessage.subject.trim() ||
-                !manualMessage.html_content.trim()
-              }
-              onClick={sendManualMessage}
-            >
-              {manualSending ? <Loader2 className="animate-spin" /> : <Send />}
-              {manualSending ? "Mengirim..." : "Kirim Email Manual"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="space-y-4 p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nama kampanye">
-              <Input
-                value={f.name}
-                onChange={(e) => setF({ ...f, name: e.target.value })}
-              />
-            </Field>
-            <Field label="Template">
-              <select
-                className="h-9 w-full rounded-md border bg-white px-3 text-sm"
-                onChange={(e) => useTemplate(e.target.value)}
-              >
-                <option value="">Tanpa template</option>
-                {templates.map((t: Template) => (
-                  <option value={t.id} key={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Nama pengirim">
-              <Input
-                value={f.from_name}
-                onChange={(e) => setF({ ...f, from_name: e.target.value })}
-              />
-            </Field>
-            <Field label="Sender terverifikasi">
-              <div className="flex gap-2">
-                <select
-                  className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
-                  value={f.from_email}
-                  onChange={(e) => {
-                    const email = e.target.value;
-                    setF({
-                      ...f,
-                      from_email: email,
-                      from_name: getSenderDefaultName(email, f.from_name),
-                    });
-                  }}
-                >
-                  <option value="">
-                    {syncingSenders
-                      ? "Memuat sender..."
-                      : senders.length
-                        ? "Pilih sender"
-                        : "Sender belum ditemukan"}
-                  </option>
-                  {senders.map((email: string) => (
-                    <option key={email} value={email}>
-                      {email}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={refreshSenders}
-                  disabled={syncingSenders}
-                  title="Sinkronkan sender dari Mailketing"
-                  aria-label="Sinkronkan sender"
-                >
-                  <RefreshCw
-                    size={16}
-                    className={syncingSenders ? "animate-spin" : ""}
-                  />
-                </Button>
-              </div>
-              <p className="mt-1.5 text-xs text-slate-500">
-                {senders.length
-                  ? `${senders.length} sender terverifikasi tersedia.`
-                  : "Klik tombol sinkronisasi setelah menambahkan sender di Mailketing."}
-              </p>
-            </Field>
-          </div>
-          <Field label="Subjek">
-            <Input
-              value={f.subject}
-              onChange={(e) => setF({ ...f, subject: e.target.value })}
-            />
-          </Field>
-          <Field label="Kontak tersimpan">
-            <div className="mb-3 flex flex-wrap gap-2">
-              <select
-                className="h-10 rounded-md border bg-white px-3 text-sm"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="all">Semua kategori</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setSelected(
-                    Array.from(
-                      new Set([
-                        ...selected,
-                        ...visibleContacts.map((contact: Contact) => contact.id),
-                      ]),
-                    ),
-                  )
-                }
-              >
-                Pilih semua kategori ini
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setSelected(
-                    selected.filter(
-                      (id) =>
-                        !visibleContacts.some(
-                          (contact: Contact) => contact.id === id,
-                        ),
-                    ),
-                  )
-                }
-              >
-                Kosongkan kategori ini
-              </Button>
-            </div>
-            <p className="mb-2 text-xs text-slate-500">
-              {visibleContacts.length} kontak tampil, {selected.length} dipilih.
-            </p>
-            <div className="max-h-48 overflow-auto rounded-xl border p-3">
-              {visibleContacts.map((c: Contact) => (
-                <label key={c.id} className="flex gap-2 py-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(c.id)}
-                    onChange={(e) =>
-                      setSelected(
-                        e.target.checked
-                          ? [...selected, c.id]
-                          : selected.filter((x) => x !== c.id),
-                      )
-                    }
-                  />
-                  <span>
-                    {c.email} — {c.full_name || c.first_name || "Tanpa nama"}
-                    <span className="ml-2 text-xs text-emerald-700">
-                      [{c.category || "Umum"}]
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </Field>
-          <Field label="Penerima tambahan">
-            <Textarea
-              rows={3}
-              placeholder="Pisahkan dengan baris baru atau koma"
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-            />
-          </Field>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-medium text-slate-900">Konten HTML</p>
-                <p className="text-xs text-slate-500">
-                  Tulis kode HTML dan lihat hasil desain email secara langsung.
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setPreview((current) => !current)}
-              >
-                {preview ? <EyeOff size={16} /> : <Eye size={16} />}
-                {preview ? "Sembunyikan preview" : "Tampilkan preview"}
-              </Button>
-            </div>
-            <div
-              className={
-                preview
-                  ? "grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
-                  : ""
-              }
-            >
-              <div className="overflow-hidden rounded-xl border bg-slate-950">
-                <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Kode HTML
-                </div>
-                <Textarea
-                  rows={18}
-                  className="min-h-[450px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
-                  placeholder="Tempel atau tulis desain HTML email di sini..."
-                  value={f.html_content}
-                  onChange={(e) =>
-                    setF({ ...f, html_content: e.target.value })
-                  }
-                />
-              </div>
-              {preview && (
-                <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                        Preview desain email
-                      </p>
-                      <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
-                        {renderCampaignPreview(f.subject) || "Tanpa subjek"}
-                      </p>
-                    </div>
-                    <div className="flex rounded-lg bg-slate-100 p-1">
-                      <button
-                        type="button"
-                        className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                          previewDevice === "desktop"
-                            ? "bg-white text-slate-900 shadow-sm"
-                            : "text-slate-500"
-                        }`}
-                        onClick={() => setPreviewDevice("desktop")}
-                      >
-                        Desktop
-                      </button>
-                      <button
-                        type="button"
-                        className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                          previewDevice === "mobile"
-                            ? "bg-white text-slate-900 shadow-sm"
-                            : "text-slate-500"
-                        }`}
-                        onClick={() => setPreviewDevice("mobile")}
-                      >
-                        Mobile
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overflow-auto p-3 sm:p-5">
-                    <iframe
-                      title="Preview desain kampanye"
-                      sandbox=""
-                      srcDoc={
-                        f.html_content.trim()
-                          ? renderCampaignPreview(f.html_content)
-                          : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan konten HTML untuk melihat desain email.</p></body></html>'
-                      }
-                      className={`mx-auto h-[450px] bg-white shadow-sm transition-[width] duration-200 ${
-                        previewDevice === "mobile" ? "w-[375px] max-w-full" : "w-full"
-                      }`}
-                    />
-                  </div>
-                  <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
-                    Keyword menampilkan contoh data dari kontak yang dipilih.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {f.attachments.map((a: string, i: number) => (
-              <Field key={i} label={`URL lampiran ${i + 1}`}>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Nama pengirim">
                 <Input
-                  value={a}
-                  onChange={(e) => {
-                    const x = [...f.attachments];
-                    x[i] = e.target.value;
-                    setF({ ...f, attachments: x });
-                  }}
+                  placeholder="Contoh: Tim Safar Iman"
+                  value={f.from_name}
+                  onChange={(event) => setF({ ...f, from_name: event.target.value })}
                 />
               </Field>
-            ))}
-          </div>
-          <Field label="Jadwalkan (opsional)">
-            <Input
-              type="datetime-local"
-              value={f.scheduled_at}
-              onChange={(e) => setF({ ...f, scheduled_at: e.target.value })}
-            />
-          </Field>
-          <p className="rounded-xl bg-slate-50 p-3 text-sm">
-            <b>{recipients.length}</b> penerima · estimasi{" "}
-            <b>{recipients.length}</b> kredit
-          </p>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => submit(true)}
-              disabled={busy || !f.from_email}
-            >
-              Kirim Tes
-            </Button>
-            <Button
-              onClick={() => submit(false)}
-              disabled={
-                busy ||
-                !f.name ||
-                !f.from_email ||
-                !f.subject ||
-                !f.html_content ||
-                !recipients.length ||
-                (provider?.credits?.data?.credits !== undefined &&
-                  recipients.length > provider.credits.data.credits)
-              }
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              {busy ? <Loader2 className="animate-spin" /> : <Send />}
-              {f.scheduled_at ? "Jadwalkan" : "Kirim Sekarang"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <Field label="Sender terverifikasi">
+                <div className="flex gap-2">
+                  <select
+                    className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                    value={f.from_email}
+                    onChange={(event) => {
+                      const email = event.target.value;
+                      setF({
+                        ...f,
+                        from_email: email,
+                        from_name: getSenderDefaultName(email, f.from_name),
+                      });
+                    }}
+                  >
+                    <option value="">{syncingSenders ? "Memuat sender..." : "Pilih sender"}</option>
+                    {senders.map((email: string) => (
+                      <option key={email} value={email}>
+                        {email}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={refreshSenders}
+                    disabled={syncingSenders}
+                    title="Sinkronkan sender dari Mailketing"
+                    aria-label="Sinkronkan sender"
+                  >
+                    <RefreshCw size={16} className={syncingSenders ? "animate-spin" : ""} />
+                  </Button>
+                </div>
+              </Field>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Nama penerima">
+                <Input
+                  placeholder="Contoh: Rizky Arif Fauzi"
+                  value={manualMessage.recipient_name}
+                  onChange={(event) =>
+                    setManualMessage({
+                      ...manualMessage,
+                      recipient_name: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Email penerima">
+                <Input
+                  type="email"
+                  inputMode="email"
+                  placeholder="nama@email.com"
+                  value={manualMessage.recipient_email}
+                  onChange={(event) =>
+                    setManualMessage({
+                      ...manualMessage,
+                      recipient_email: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+            <Field label="Subjek email">
+              <Input
+                placeholder="Masukkan subjek email"
+                value={manualMessage.subject}
+                onChange={(event) =>
+                  setManualMessage({
+                    ...manualMessage,
+                    subject: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="overflow-hidden rounded-xl border bg-slate-950">
+                <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Body email (HTML)
+                </div>
+                <Textarea
+                  rows={16}
+                  className="min-h-[400px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
+                  placeholder={"<h2>Halo {{nama}}</h2>\n<p>Tulis isi email di sini.</p>"}
+                  value={manualMessage.html_content}
+                  onChange={(event) =>
+                    setManualMessage({
+                      ...manualMessage,
+                      html_content: event.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      Preview email
+                    </p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                      {renderManualPreview(manualMessage.subject) || "Tanpa subjek"}
+                    </p>
+                  </div>
+                  <div className="flex rounded-lg bg-slate-100 p-1">
+                    {(["desktop", "mobile"] as const).map((device) => (
+                      <button
+                        key={device}
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
+                          manualPreviewDevice === device
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-500"
+                        }`}
+                        onClick={() => setManualPreviewDevice(device)}
+                      >
+                        {device}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-auto p-3 sm:p-5">
+                  <iframe
+                    title="Preview email manual"
+                    sandbox=""
+                    srcDoc={
+                      manualMessage.html_content.trim()
+                        ? renderManualPreview(manualMessage.html_content)
+                        : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan body HTML untuk melihat desain email.</p></body></html>'
+                    }
+                    className={`mx-auto h-[400px] bg-white shadow-sm transition-[width] duration-200 ${
+                      manualPreviewDevice === "mobile" ? "w-[375px] max-w-full" : "w-full"
+                    }`}
+                  />
+                </div>
+                <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
+                  Gunakan <code>{"{{nama}}"}</code> dan <code>{"{{email}}"}</code> untuk data
+                  penerima.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">
+                Dikirim dari{" "}
+                <b className="text-slate-700">{f.from_email || "sender belum dipilih"}</b>.
+              </p>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                disabled={
+                  manualSending ||
+                  !f.from_email ||
+                  !manualMessage.recipient_name.trim() ||
+                  !manualMessage.recipient_email.trim() ||
+                  !manualMessage.subject.trim() ||
+                  !manualMessage.html_content.trim()
+                }
+                onClick={sendManualMessage}
+              >
+                {manualSending ? <Loader2 className="animate-spin" /> : <Send />}
+                {manualSending ? "Mengirim..." : "Kirim Email Manual"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {composeMode === "bulk" && (
+        <Card role="tabpanel">
+          <CardContent className="space-y-4 p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Nama kampanye">
+                <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+              </Field>
+              <Field label="Template">
+                <select
+                  className="h-9 w-full rounded-md border bg-white px-3 text-sm"
+                  onChange={(e) => useTemplate(e.target.value)}
+                >
+                  <option value="">Tanpa template</option>
+                  {templates.map((t: Template) => (
+                    <option value={t.id} key={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Nama pengirim">
+                <Input
+                  value={f.from_name}
+                  onChange={(e) => setF({ ...f, from_name: e.target.value })}
+                />
+              </Field>
+              <Field label="Sender terverifikasi">
+                <div className="flex gap-2">
+                  <select
+                    className="h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm"
+                    value={f.from_email}
+                    onChange={(e) => {
+                      const email = e.target.value;
+                      setF({
+                        ...f,
+                        from_email: email,
+                        from_name: getSenderDefaultName(email, f.from_name),
+                      });
+                    }}
+                  >
+                    <option value="">
+                      {syncingSenders
+                        ? "Memuat sender..."
+                        : senders.length
+                          ? "Pilih sender"
+                          : "Sender belum ditemukan"}
+                    </option>
+                    {senders.map((email: string) => (
+                      <option key={email} value={email}>
+                        {email}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={refreshSenders}
+                    disabled={syncingSenders}
+                    title="Sinkronkan sender dari Mailketing"
+                    aria-label="Sinkronkan sender"
+                  >
+                    <RefreshCw size={16} className={syncingSenders ? "animate-spin" : ""} />
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {senders.length
+                    ? `${senders.length} sender terverifikasi tersedia.`
+                    : "Klik tombol sinkronisasi setelah menambahkan sender di Mailketing."}
+                </p>
+              </Field>
+            </div>
+            <Field label="Subjek">
+              <Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} />
+            </Field>
+            <Field label="Kontak tersimpan">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <select
+                  className="h-10 rounded-md border bg-white px-3 text-sm"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  <option value="all">Semua kategori</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setSelected(
+                      Array.from(
+                        new Set([
+                          ...selected,
+                          ...visibleContacts.map((contact: Contact) => contact.id),
+                        ]),
+                      ),
+                    )
+                  }
+                >
+                  Pilih semua kategori ini
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setSelected(
+                      selected.filter(
+                        (id) => !visibleContacts.some((contact: Contact) => contact.id === id),
+                      ),
+                    )
+                  }
+                >
+                  Kosongkan kategori ini
+                </Button>
+              </div>
+              <p className="mb-2 text-xs text-slate-500">
+                {visibleContacts.length} kontak tampil, {selected.length} dipilih.
+              </p>
+              <div className="max-h-48 overflow-auto rounded-xl border p-3">
+                {visibleContacts.map((c: Contact) => (
+                  <label key={c.id} className="flex gap-2 py-1 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(c.id)}
+                      onChange={(e) =>
+                        setSelected(
+                          e.target.checked
+                            ? [...selected, c.id]
+                            : selected.filter((x) => x !== c.id),
+                        )
+                      }
+                    />
+                    <span>
+                      {c.email} — {c.full_name || c.first_name || "Tanpa nama"}
+                      <span className="ml-2 text-xs text-emerald-700">
+                        [{c.category || "Umum"}]
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <Field label="Penerima tambahan">
+              <Textarea
+                rows={3}
+                placeholder="Pisahkan dengan baris baru atau koma"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+              />
+            </Field>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Konten HTML</p>
+                  <p className="text-xs text-slate-500">
+                    Tulis kode HTML dan lihat hasil desain email secara langsung.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPreview((current) => !current)}
+                >
+                  {preview ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {preview ? "Sembunyikan preview" : "Tampilkan preview"}
+                </Button>
+              </div>
+              <div
+                className={
+                  preview ? "grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]" : ""
+                }
+              >
+                <div className="overflow-hidden rounded-xl border bg-slate-950">
+                  <div className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Kode HTML
+                  </div>
+                  <Textarea
+                    rows={18}
+                    className="min-h-[450px] resize-y rounded-none border-0 bg-slate-950 font-mono text-xs leading-5 text-slate-100 focus-visible:ring-0"
+                    placeholder="Tempel atau tulis desain HTML email di sini..."
+                    value={f.html_content}
+                    onChange={(e) => setF({ ...f, html_content: e.target.value })}
+                  />
+                </div>
+                {preview && (
+                  <div className="overflow-hidden rounded-xl border bg-slate-100 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                          Preview desain email
+                        </p>
+                        <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                          {renderCampaignPreview(f.subject) || "Tanpa subjek"}
+                        </p>
+                      </div>
+                      <div className="flex rounded-lg bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                            previewDevice === "desktop"
+                              ? "bg-white text-slate-900 shadow-sm"
+                              : "text-slate-500"
+                          }`}
+                          onClick={() => setPreviewDevice("desktop")}
+                        >
+                          Desktop
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                            previewDevice === "mobile"
+                              ? "bg-white text-slate-900 shadow-sm"
+                              : "text-slate-500"
+                          }`}
+                          onClick={() => setPreviewDevice("mobile")}
+                        >
+                          Mobile
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-auto p-3 sm:p-5">
+                      <iframe
+                        title="Preview desain kampanye"
+                        sandbox=""
+                        srcDoc={
+                          f.html_content.trim()
+                            ? renderCampaignPreview(f.html_content)
+                            : '<!doctype html><html><body style="margin:0;padding:48px 24px;font-family:Arial,sans-serif;text-align:center;color:#64748b;background:#fff"><p>Masukkan konten HTML untuk melihat desain email.</p></body></html>'
+                        }
+                        className={`mx-auto h-[450px] bg-white shadow-sm transition-[width] duration-200 ${
+                          previewDevice === "mobile" ? "w-[375px] max-w-full" : "w-full"
+                        }`}
+                      />
+                    </div>
+                    <p className="border-t bg-white px-4 py-2 text-xs text-slate-500">
+                      Keyword menampilkan contoh data dari kontak yang dipilih.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {f.attachments.map((a: string, i: number) => (
+                <Field key={i} label={`URL lampiran ${i + 1}`}>
+                  <Input
+                    value={a}
+                    onChange={(e) => {
+                      const x = [...f.attachments];
+                      x[i] = e.target.value;
+                      setF({ ...f, attachments: x });
+                    }}
+                  />
+                </Field>
+              ))}
+            </div>
+            <Field label="Jadwalkan (opsional)">
+              <Input
+                type="datetime-local"
+                value={f.scheduled_at}
+                onChange={(e) => setF({ ...f, scheduled_at: e.target.value })}
+              />
+            </Field>
+            <p className="rounded-xl bg-slate-50 p-3 text-sm">
+              <b>{recipients.length}</b> penerima · estimasi <b>{recipients.length}</b> kredit
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => submit(true)}
+                disabled={busy || !f.from_email}
+              >
+                Kirim Tes
+              </Button>
+              <Button
+                onClick={() => submit(false)}
+                disabled={
+                  busy ||
+                  !f.name ||
+                  !f.from_email ||
+                  !f.subject ||
+                  !f.html_content ||
+                  !recipients.length ||
+                  (provider?.credits?.data?.credits !== undefined &&
+                    recipients.length > provider.credits.data.credits)
+                }
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {busy ? <Loader2 className="animate-spin" /> : <Send />}
+                {f.scheduled_at ? "Jadwalkan" : "Kirim Sekarang"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }
@@ -3963,17 +3888,19 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const [detailRefreshing, setDetailRefreshing] = useState(false);
 
   const recipientStatusLabel = (status: string) =>
-    ({
-      pending: "Antre",
-      processing: "Diproses",
-      queued: "Diterima API",
-      sent: "Terkirim",
-      delivered: "Delivered",
-      failed: "Gagal teknis",
-      bounced: "Bounce",
-      rejected: "Rejected",
-      cancelled: "Dibatalkan",
-    } as Record<string, string>)[status] ?? status;
+    (
+      ({
+        pending: "Antre",
+        processing: "Diproses",
+        queued: "Diterima API",
+        sent: "Terkirim",
+        delivered: "Delivered",
+        failed: "Gagal teknis",
+        bounced: "Bounce",
+        rejected: "Rejected",
+        cancelled: "Dibatalkan",
+      }) as Record<string, string>
+    )[status] ?? status;
 
   const providerResponseText = (row: any) => {
     if (row.provider_response) {
@@ -3987,9 +3914,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const recipientOpenedAt = (row: any) =>
     row.provider_opened_at || row.internal_opened_at || row.opened_at;
   const recipientClickedAt = (row: any) =>
-    row.provider_first_clicked_at ||
-    row.internal_first_clicked_at ||
-    row.first_clicked_at;
+    row.provider_first_clicked_at || row.internal_first_clicked_at || row.first_clicked_at;
   const recipientOpenCount = (row: any) =>
     Number(row.provider_open_count ?? 0) > 0
       ? Number(row.provider_open_count)
@@ -4048,7 +3973,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     if (
       action === "cancel-campaign" &&
       !window.confirm(`Yakin ingin membatalkan kampanye “${campaign.name}”?`)
-    ) return;
+    )
+      return;
     setBusyId(campaign.id);
     try {
       const response = await invoke({ action, campaign_id: campaign.id });
@@ -4076,8 +4002,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     if (!detail) return;
     const campaign = detail.campaign;
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible")
-        void loadDetailRows(campaign, true);
+      if (document.visibilityState === "visible") void loadDetailRows(campaign, true);
     }, 10000);
     return () => window.clearInterval(interval);
   }, [detail?.campaign.id, token]);
@@ -4086,18 +4011,9 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     const csv =
       "\uFEFF" +
       rows
-        .map((row) =>
-          row
-            .map(
-              (value) =>
-                `"${String(value ?? "").replace(/"/g, '""')}"`,
-            )
-            .join(","),
-        )
+        .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
         .join("\n");
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    );
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
@@ -4108,16 +4024,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const exportReport = () =>
     exportCsv(
       [
-        [
-          "Kampanye",
-          "Status",
-          "Total",
-          "Terkirim",
-          "Gagal",
-          "Dibuka",
-          "Klik",
-          "Jadwal",
-        ],
+        ["Kampanye", "Status", "Total", "Terkirim", "Gagal", "Dibuka", "Klik", "Jadwal"],
         ...campaigns.map((campaign: Campaign) => [
           campaign.name,
           campaign.status,
@@ -4135,18 +4042,13 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   const detailStats = detail
     ? {
         total: detail.rows.length,
-        delivered: detail.rows.filter((row) =>
-          ["sent", "delivered"].includes(row.status),
-        ).length,
+        delivered: detail.rows.filter((row) => ["sent", "delivered"].includes(row.status)).length,
         opened: detail.rows.filter((row) => Boolean(recipientOpenedAt(row))).length,
-        clicked: detail.rows.filter((row) => Boolean(recipientClickedAt(row)))
-          .length,
+        clicked: detail.rows.filter((row) => Boolean(recipientClickedAt(row))).length,
         failed: detail.rows.filter((row) => row.status === "failed").length,
         bounced: detail.rows.filter((row) => row.status === "bounced").length,
         rejected: detail.rows.filter((row) => row.status === "rejected").length,
-        pending: detail.rows.filter((row) =>
-          ["pending", "processing"].includes(row.status),
-        ).length,
+        pending: detail.rows.filter((row) => ["pending", "processing"].includes(row.status)).length,
       }
     : null;
 
@@ -4154,9 +4056,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     ? detail.rows.filter((row) => {
         const queryMatches =
           !detailQuery.trim() ||
-          String(row.email)
-            .toLowerCase()
-            .includes(detailQuery.trim().toLowerCase());
+          String(row.email).toLowerCase().includes(detailQuery.trim().toLowerCase());
         const delivered = ["sent", "delivered"].includes(row.status);
         const filterMatches =
           detailFilter === "all" ||
@@ -4164,14 +4064,11 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           (detailFilter === "opened" && Boolean(recipientOpenedAt(row))) ||
           (detailFilter === "unopened" && delivered && !recipientOpenedAt(row)) ||
           (detailFilter === "clicked" && Boolean(recipientClickedAt(row))) ||
-          (detailFilter === "unclicked" &&
-            delivered &&
-            !recipientClickedAt(row)) ||
+          (detailFilter === "unclicked" && delivered && !recipientClickedAt(row)) ||
           (detailFilter === "failed" && row.status === "failed") ||
           (detailFilter === "bounced" && row.status === "bounced") ||
           (detailFilter === "rejected" && row.status === "rejected") ||
-          (detailFilter === "pending" &&
-            ["pending", "processing"].includes(row.status)) ||
+          (detailFilter === "pending" && ["pending", "processing"].includes(row.status)) ||
           (detailFilter === "cancelled" && row.status === "cancelled");
         return queryMatches && filterMatches;
       })
@@ -4200,13 +4097,9 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           row.status,
           row.attempts,
           recipientOpenCount(row) ?? 0,
-          recipientOpenedAt(row)
-            ? new Date(recipientOpenedAt(row)).toLocaleString("id-ID")
-            : "",
+          recipientOpenedAt(row) ? new Date(recipientOpenedAt(row)).toLocaleString("id-ID") : "",
           recipientClickCount(row) ?? 0,
-          recipientClickedAt(row)
-            ? new Date(recipientClickedAt(row)).toLocaleString("id-ID")
-            : "",
+          recipientClickedAt(row) ? new Date(recipientClickedAt(row)).toLocaleString("id-ID") : "",
           row.provider_status_code ?? "",
           providerResponseText(row),
           row.last_error ?? "",
@@ -4225,8 +4118,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "unopened",
           "Belum dibuka",
           detail.rows.filter(
-            (row) =>
-              ["sent", "delivered"].includes(row.status) && !recipientOpenedAt(row),
+            (row) => ["sent", "delivered"].includes(row.status) && !recipientOpenedAt(row),
           ).length,
         ],
         ["clicked", "Sudah klik", detailStats.clicked],
@@ -4234,20 +4126,14 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
           "unclicked",
           "Belum klik",
           detail.rows.filter(
-            (row) =>
-              ["sent", "delivered"].includes(row.status) &&
-              !recipientClickedAt(row),
+            (row) => ["sent", "delivered"].includes(row.status) && !recipientClickedAt(row),
           ).length,
         ],
         ["failed", "Gagal teknis", detailStats.failed],
         ["bounced", "Bounce", detailStats.bounced],
         ["rejected", "Rejected", detailStats.rejected],
         ["pending", "Antre", detailStats.pending],
-        [
-          "cancelled",
-          "Dibatalkan",
-          detail.rows.filter((row) => row.status === "cancelled").length,
-        ],
+        ["cancelled", "Dibatalkan", detail.rows.filter((row) => row.status === "cancelled").length],
       ]
     : [];
 
@@ -4284,7 +4170,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                   Data diperbarui otomatis setiap 10 detik
                   {detailUpdatedAt
                     ? ` · Terakhir ${detailUpdatedAt.toLocaleTimeString("id-ID")}`
-                    : ""}.
+                    : ""}
+                  .
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -4300,11 +4187,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 <Button variant="outline" size="sm" onClick={exportDetail}>
                   <FileSpreadsheet /> Export Detail
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDetail(null)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setDetail(null)}>
                   Tutup
                 </Button>
               </div>
@@ -4312,11 +4195,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
             <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
               {[
                 ["Total", detailStats.total, "bg-slate-50 text-slate-700"],
-                [
-                  "Terkirim",
-                  detailStats.delivered,
-                  "bg-emerald-50 text-emerald-700",
-                ],
+                ["Terkirim", detailStats.delivered, "bg-emerald-50 text-emerald-700"],
                 ["Dibuka", detailStats.opened, "bg-sky-50 text-sky-700"],
                 ["Klik", detailStats.clicked, "bg-violet-50 text-violet-700"],
                 ["Gagal", detailStats.failed, "bg-red-50 text-red-700"],
@@ -4324,10 +4203,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 ["Rejected", detailStats.rejected, "bg-rose-50 text-rose-700"],
                 ["Antre", detailStats.pending, "bg-amber-50 text-amber-700"],
               ].map(([label, value, color]) => (
-                <div
-                  key={String(label)}
-                  className={`rounded-2xl p-3 ${color}`}
-                >
+                <div key={String(label)} className={`rounded-2xl p-3 ${color}`}>
                   <p className="text-xs">{label}</p>
                   <b className="mt-1 block text-xl">{value}</b>
                 </div>
@@ -4401,9 +4277,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                         <Td>{recipientClickCount(row) ?? 0}</Td>
                         <Td>
                           {recipientClickedAt(row)
-                            ? new Date(
-                                recipientClickedAt(row),
-                              ).toLocaleString("id-ID")
+                            ? new Date(recipientClickedAt(row)).toLocaleString("id-ID")
                             : "Belum klik"}
                         </Td>
                         <Td>
@@ -4418,10 +4292,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                     ))
                   ) : (
                     <tr>
-                      <td
-                        colSpan={9}
-                        className="px-4 py-10 text-center text-slate-500"
-                      >
+                      <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
                         Penerima tidak ditemukan pada filter ini.
                       </td>
                     </tr>
@@ -4435,12 +4306,8 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                 filteredDetailRows.map((row: any) => (
                   <article key={row.id} className="space-y-3 p-4">
                     <div>
-                      <p className="font-semibold text-slate-900">
-                        {getRecipientName(row)}
-                      </p>
-                      <p className="break-all text-sm text-slate-500">
-                        {row.email}
-                      </p>
+                      <p className="font-semibold text-slate-900">{getRecipientName(row)}</p>
+                      <p className="break-all text-sm text-slate-500">{row.email}</p>
                       <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-1 text-xs capitalize">
                         {recipientStatusLabel(row.status)}
                       </span>
@@ -4450,17 +4317,13 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                         className={`rounded-xl p-3 ${recipientOpenedAt(row) ? "bg-sky-50 text-sky-700" : "bg-slate-50 text-slate-500"}`}
                       >
                         <p>Email dibuka</p>
-                        <b className="mt-1 block">
-                          {recipientOpenCount(row) ?? 0} kali
-                        </b>
+                        <b className="mt-1 block">{recipientOpenCount(row) ?? 0} kali</b>
                       </div>
                       <div
                         className={`rounded-xl p-3 ${recipientClickedAt(row) ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"}`}
                       >
                         <p>Tautan diklik</p>
-                        <b className="mt-1 block">
-                          {recipientClickCount(row) ?? 0} kali
-                        </b>
+                        <b className="mt-1 block">{recipientClickCount(row) ?? 0} kali</b>
                       </div>
                     </div>
                     <div className="space-y-1 text-xs text-slate-500">
@@ -4473,15 +4336,11 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
                       <p>
                         Klik:{" "}
                         {recipientClickedAt(row)
-                          ? new Date(
-                              recipientClickedAt(row),
-                            ).toLocaleString("id-ID")
+                          ? new Date(recipientClickedAt(row)).toLocaleString("id-ID")
                           : "Belum pernah"}
                       </p>
                       {(row.last_error || row.provider_message) && (
-                        <p className="rounded-xl bg-slate-50 p-2">
-                          {providerResponseText(row)}
-                        </p>
+                        <p className="rounded-xl bg-slate-50 p-2">{providerResponseText(row)}</p>
                       )}
                     </div>
                   </article>
@@ -4498,7 +4357,6 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     </>
   );
 }
-
 
 type MediaAsset = {
   id: string;
@@ -4528,8 +4386,7 @@ function MediaView({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const encodeStoragePath = (path: string) =>
-    path.split("/").map(encodeURIComponent).join("/");
+  const encodeStoragePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
   const loadMedia = async () => {
     setLoading(true);
@@ -4542,8 +4399,7 @@ function MediaView({
     } catch (error) {
       setNotice({
         success: false,
-        message:
-          error instanceof Error ? error.message : "Media gagal dimuat.",
+        message: error instanceof Error ? error.message : "Media gagal dimuat.",
       });
     } finally {
       setLoading(false);
@@ -4564,16 +4420,11 @@ function MediaView({
       "image/svg+xml",
       "application/pdf",
     ]);
-    const invalid = files.find(
-      (file) => !allowed.has(file.type) || file.size > 20 * 1024 * 1024,
-    );
+    const invalid = files.find((file) => !allowed.has(file.type) || file.size > 20 * 1024 * 1024);
     if (invalid) {
       setNotice({
         success: false,
-        message:
-          "File " +
-          invalid.name +
-          " tidak didukung atau melebihi batas 20 MB.",
+        message: "File " + invalid.name + " tidak didukung atau melebihi batas 20 MB.",
       });
       return;
     }
@@ -4583,39 +4434,26 @@ function MediaView({
     let uploaded = 0;
     try {
       for (const file of files) {
-        const safeName =
-          file.name.replace(/[^a-zA-Z0-9._-]+/g, "-") || "media";
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-") || "media";
         const path =
-          userId +
-          "/" +
-          Date.now() +
-          "-" +
-          crypto.randomUUID().slice(0, 8) +
-          "-" +
-          safeName;
+          userId + "/" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + "-" + safeName;
         const encodedPath = encodeStoragePath(path);
-        const uploadResponse = await fetch(
-          SB_URL + "/storage/v1/object/media/" + encodedPath,
-          {
-            method: "POST",
-            headers: {
-              apikey: SB_KEY,
-              Authorization: "Bearer " + token,
-              "Content-Type": file.type,
-              "x-upsert": "false",
-            },
-            body: file,
+        const uploadResponse = await fetch(SB_URL + "/storage/v1/object/media/" + encodedPath, {
+          method: "POST",
+          headers: {
+            apikey: SB_KEY,
+            Authorization: "Bearer " + token,
+            "Content-Type": file.type,
+            "x-upsert": "false",
           },
-        );
+          body: file,
+        });
         if (!uploadResponse.ok) {
           const body = await uploadResponse.json().catch(() => ({}));
-          throw new Error(
-            body.message || body.error || "Upload " + file.name + " gagal.",
-          );
+          throw new Error(body.message || body.error || "Upload " + file.name + " gagal.");
         }
 
-        const publicUrl =
-          SB_URL + "/storage/v1/object/public/media/" + encodedPath;
+        const publicUrl = SB_URL + "/storage/v1/object/public/media/" + encodedPath;
         try {
           await api("/rest/v1/media_assets", token, {
             method: "POST",
@@ -4675,13 +4513,10 @@ function MediaView({
   };
 
   const removeMedia = async (asset: MediaAsset) => {
-    if (!window.confirm('Hapus media "' + asset.name + '" secara permanen?'))
-      return;
+    if (!window.confirm('Hapus media "' + asset.name + '" secara permanen?')) return;
     try {
       const storageResponse = await fetch(
-        SB_URL +
-          "/storage/v1/object/media/" +
-          encodeStoragePath(asset.storage_path),
+        SB_URL + "/storage/v1/object/media/" + encodeStoragePath(asset.storage_path),
         {
           method: "DELETE",
           headers: {
@@ -4694,18 +4529,15 @@ function MediaView({
         const body = await storageResponse.json().catch(() => ({}));
         throw new Error(body.message || body.error || "File gagal dihapus.");
       }
-      await api(
-        "/rest/v1/media_assets?id=eq." + encodeURIComponent(asset.id),
-        token,
-        { method: "DELETE" },
-      );
+      await api("/rest/v1/media_assets?id=eq." + encodeURIComponent(asset.id), token, {
+        method: "DELETE",
+      });
       setAssets((current) => current.filter((item) => item.id !== asset.id));
       setNotice({ success: true, message: "Media berhasil dihapus." });
     } catch (error) {
       setNotice({
         success: false,
-        message:
-          error instanceof Error ? error.message : "Media gagal dihapus.",
+        message: error instanceof Error ? error.message : "Media gagal dihapus.",
       });
     }
   };
@@ -4756,8 +4588,8 @@ function MediaView({
             </span>
             <h2 className="mt-3 font-semibold">Unggah media</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Tarik file ke sini atau pilih beberapa file sekaligus. JPG, PNG,
-              WebP, GIF, SVG, dan PDF; maksimal 20 MB per file.
+              Tarik file ke sini atau pilih beberapa file sekaligus. JPG, PNG, WebP, GIF, SVG, dan
+              PDF; maksimal 20 MB per file.
             </p>
             <input
               ref={inputRef}
@@ -4765,26 +4597,20 @@ function MediaView({
               multiple
               accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,application/pdf"
               className="hidden"
-              onChange={(event) =>
-                uploadFiles(Array.from(event.target.files ?? []))
-              }
+              onChange={(event) => uploadFiles(Array.from(event.target.files ?? []))}
             />
             <Button
               className="mt-4 bg-emerald-600 hover:bg-emerald-700"
               disabled={uploading}
               onClick={() => inputRef.current?.click()}
             >
-              {uploading ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Upload />
-              )}
+              {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
               {uploading ? "Mengunggah..." : "Pilih File"}
             </Button>
           </div>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            URL media bersifat publik agar dapat dimuat oleh penerima email.
-            Jangan unggah dokumen rahasia atau data pribadi.
+            URL media bersifat publik agar dapat dimuat oleh penerima email. Jangan unggah dokumen
+            rahasia atau data pribadi.
           </div>
         </CardContent>
       </Card>
@@ -4793,15 +4619,10 @@ function MediaView({
         <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Pustaka Media</CardTitle>
-            <p className="mt-1 text-sm text-slate-500">
-              {assets.length} file tersimpan
-            </p>
+            <p className="mt-1 text-sm text-slate-500">{assets.length} file tersimpan</p>
           </div>
           <div className="relative w-full sm:max-w-sm">
-            <Search
-              size={17}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+            <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -4858,19 +4679,13 @@ function MediaView({
                         onClick={() => copyUrl(asset)}
                         title="Salin URL"
                       >
-                        {copiedId === asset.id ? (
-                          <CheckCircle2 size={16} />
-                        ) : (
-                          <Copy size={16} />
-                        )}
+                        {copiedId === asset.id ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                         <span className="hidden sm:inline">Salin</span>
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                          window.open(asset.public_url, "_blank", "noopener")
-                        }
+                        onClick={() => window.open(asset.public_url, "_blank", "noopener")}
                         title="Buka media"
                       >
                         <ExternalLink size={16} />
@@ -4935,7 +4750,10 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setStaff(users.users ?? []);
       setAudits(logs ?? []);
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Data admin gagal dimuat." });
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Data admin gagal dimuat.",
+      });
     }
   };
   const loadSettings = async () => {
@@ -4947,16 +4765,9 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
       setTokenConfigured(Boolean(response.token_configured));
       const savedEmail = settings.default_from_email ?? "";
       setFromEmail(savedEmail);
-      setFromName(
-        getSenderDefaultName(
-          savedEmail,
-          settings.default_from_name ?? "",
-        ),
-      );
+      setFromName(getSenderDefaultName(savedEmail, settings.default_from_name ?? ""));
       setAvailableSenders(
-        Array.isArray(settings.available_senders)
-          ? settings.available_senders
-          : [],
+        Array.isArray(settings.available_senders) ? settings.available_senders : [],
       );
       setCorporate(Boolean(settings.corporate_mode));
       setSettingsUpdatedAt(settings.updated_at ?? null);
@@ -5057,7 +4868,11 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
   };
   return (
     <>
-      <PageHeading title="Pengaturan API" description="Kelola koneksi Mailketing dan sender dengan aman." icon={<Settings />} />
+      <PageHeading
+        title="Pengaturan API"
+        description="Kelola koneksi Mailketing dan sender dengan aman."
+        icon={<Settings />}
+      />
       <Card>
         <CardContent className="space-y-4 p-5">
           {!admin && (
@@ -5108,7 +4923,8 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                 Konfigurasi API sudah tersimpan
               </div>
               <p className="mt-1 text-xs text-emerald-700">
-                Nama pengirim, email pengirim, mode API, dan status token di bawah ini adalah konfigurasi aktif.
+                Nama pengirim, email pengirim, mode API, dan status token di bawah ini adalah
+                konfigurasi aktif.
                 {settingsUpdatedAt
                   ? ` Terakhir diperbarui ${new Date(settingsUpdatedAt).toLocaleString("id-ID")}.`
                   : ""}
@@ -5117,10 +4933,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama pengirim default">
-              <Input
-                value={fromName}
-                onChange={(e) => setFromName(e.target.value)}
-              />
+              <Input value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </Field>
             <Field label="Sender aktif">
               <div className="flex gap-2">
@@ -5152,10 +4965,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
                   title="Sinkronkan sender Mailketing"
                   aria-label="Sinkronkan sender Mailketing"
                 >
-                  <RefreshCw
-                    size={16}
-                    className={syncingSenders ? "animate-spin" : ""}
-                  />
+                  <RefreshCw size={16} className={syncingSenders ? "animate-spin" : ""} />
                 </Button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
@@ -5212,30 +5022,62 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Input placeholder="Nama lengkap" value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
-                <Input type="email" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
-                <Input type="password" placeholder="Password minimal 8 karakter" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
-                <select className="h-11 rounded-xl border border-slate-200 bg-white px-3" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+                <Input
+                  placeholder="Nama lengkap"
+                  value={newUser.full_name}
+                  onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+                />
+                <Input
+                  type="email"
+                  placeholder="Email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                />
+                <Input
+                  type="password"
+                  placeholder="Password minimal 8 karakter"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                />
+                <select
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3"
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                >
                   <option value="operator">Operator</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
-              <Button disabled={busy || !newUser.email || newUser.password.length < 8} onClick={createStaff}>
+              <Button
+                disabled={busy || !newUser.email || newUser.password.length < 8}
+                onClick={createStaff}
+              >
                 Buat Akun Staf
               </Button>
               <div className="divide-y rounded-2xl border">
                 {staff.map((user) => (
-                  <div key={user.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div
+                    key={user.id}
+                    className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
                     <div className="min-w-0">
                       <b className="block truncate">{user.full_name || user.email}</b>
                       <span className="text-xs text-slate-500">{user.email}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <select className="h-9 rounded-xl border bg-white px-2 text-sm" value={user.role} onChange={(e) => updateStaff(user, { role: e.target.value })}>
+                      <select
+                        className="h-9 rounded-xl border bg-white px-2 text-sm"
+                        value={user.role}
+                        onChange={(e) => updateStaff(user, { role: e.target.value })}
+                      >
                         <option value="operator">Operator</option>
                         <option value="admin">Admin</option>
                       </select>
-                      <Button size="sm" variant="outline" onClick={() => updateStaff(user, { active: !user.active })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => updateStaff(user, { active: !user.active })}
+                      >
                         {user.active ? "Nonaktifkan" : "Aktifkan"}
                       </Button>
                     </div>
@@ -5245,14 +5087,17 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Audit Aktivitas</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Audit Aktivitas</CardTitle>
+            </CardHeader>
             <CardContent className="max-h-96 overflow-auto p-0">
               <div className="divide-y">
                 {audits.map((log) => (
                   <div key={log.id} className="p-3 text-sm">
                     <b>{log.action}</b>
                     <p className="text-xs text-slate-500">
-                      {log.entity_type || "sistem"} · {new Date(log.created_at).toLocaleString("id-ID")}
+                      {log.entity_type || "sistem"} ·{" "}
+                      {new Date(log.created_at).toLocaleString("id-ID")}
                     </p>
                   </div>
                 ))}
@@ -5267,11 +5112,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             <CardTitle>Status Mailketing</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
-            <Stat
-              label="Kredit"
-              value={provider.credits?.data?.credits ?? "—"}
-              icon={<Mail />}
-            />
+            <Stat label="Kredit" value={provider.credits?.data?.credits ?? "—"} icon={<Mail />} />
             <Stat
               label="Sender"
               value={provider.senders?.data?.senders?.length ?? 0}
@@ -5296,20 +5137,13 @@ function formatRemainingTime(milliseconds: number) {
   if (totalMinutes < 60) return totalMinutes + " menit";
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours < 24)
-    return hours + " jam" + (minutes ? " " + minutes + " menit" : "");
+  if (hours < 24) return hours + " jam" + (minutes ? " " + minutes + " menit" : "");
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
   return days + " hari" + (remainingHours ? " " + remainingHours + " jam" : "");
 }
 
-function CampaignProgress({
-  campaign,
-  now,
-}: {
-  campaign: Campaign;
-  now: number;
-}) {
+function CampaignProgress({ campaign, now }: { campaign: Campaign; now: number }) {
   const total = Math.max(Number(campaign.total_count) || 0, 0);
   const sent = Math.max(Number(campaign.sent_count) || 0, 0);
   const failed = Math.max(Number(campaign.failed_count) || 0, 0);
@@ -5320,9 +5154,7 @@ function CampaignProgress({
       ? 100
       : 0;
   const remaining = Math.max(total - processed, 0);
-  const terminal = ["completed", "partial", "failed", "cancelled"].includes(
-    campaign.status,
-  );
+  const terminal = ["completed", "partial", "failed", "cancelled"].includes(campaign.status);
 
   let estimate = "Menghitung estimasi...";
   if (campaign.status === "paused") {
@@ -5340,9 +5172,7 @@ function CampaignProgress({
         })
       : "Pengiriman selesai";
   } else {
-    const scheduledTime = campaign.scheduled_at
-      ? new Date(campaign.scheduled_at).getTime()
-      : 0;
+    const scheduledTime = campaign.scheduled_at ? new Date(campaign.scheduled_at).getTime() : 0;
     if (campaign.status === "scheduled" && scheduledTime > now) {
       estimate =
         "Mulai " +
@@ -5352,10 +5182,7 @@ function CampaignProgress({
         });
     } else if (processed > 0 && remaining > 0) {
       const createdTime = new Date(campaign.created_at).getTime();
-      const startTime =
-        scheduledTime > 0 && scheduledTime <= now
-          ? scheduledTime
-          : createdTime;
+      const startTime = scheduledTime > 0 && scheduledTime <= now ? scheduledTime : createdTime;
       const elapsed = Math.max(now - startTime, 1000);
       const millisecondsPerRecipient = elapsed / processed;
       const remainingMilliseconds = millisecondsPerRecipient * remaining;
@@ -5369,9 +5196,7 @@ function CampaignProgress({
           "Perkiraan selesai " +
           finishAt.toLocaleString("id-ID", {
             dateStyle:
-              finishAt.toDateString() === new Date(now).toDateString()
-                ? undefined
-                : "short",
+              finishAt.toDateString() === new Date(now).toDateString() ? undefined : "short",
             timeStyle: "short",
           }) +
           " · ±" +
@@ -5384,9 +5209,7 @@ function CampaignProgress({
   return (
     <div className="min-w-[230px] space-y-2">
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold text-slate-700">
-          {percentage}% selesai
-        </span>
+        <span className="font-semibold text-slate-700">{percentage}% selesai</span>
         <span className="text-slate-500">
           {processed}/{total} diproses
         </span>
@@ -5412,9 +5235,7 @@ function CampaignProgress({
         />
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-        <span className="font-medium text-emerald-700">
-          {sent} berhasil
-        </span>
+        <span className="font-medium text-emerald-700">{sent} berhasil</span>
         <span className={failed ? "font-medium text-red-600" : "text-slate-400"}>
           {failed} gagal
         </span>
@@ -5467,31 +5288,73 @@ function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
                 <Td>
                   {campaign.opened_count ?? 0}
                   <span className="ml-1 text-xs text-slate-400">
-                    ({campaign.sent_count ? Math.round(((campaign.opened_count ?? 0) / campaign.sent_count) * 100) : 0}%)
+                    (
+                    {campaign.sent_count
+                      ? Math.round(((campaign.opened_count ?? 0) / campaign.sent_count) * 100)
+                      : 0}
+                    %)
                   </span>
                 </Td>
                 <Td>
                   {campaign.clicked_count ?? 0}
                   <span className="ml-1 text-xs text-slate-400">
-                    ({campaign.sent_count ? Math.round(((campaign.clicked_count ?? 0) / campaign.sent_count) * 100) : 0}%)
+                    (
+                    {campaign.sent_count
+                      ? Math.round(((campaign.clicked_count ?? 0) / campaign.sent_count) * 100)
+                      : 0}
+                    %)
                   </span>
                 </Td>
-                <Td>{campaign.scheduled_at ? new Date(campaign.scheduled_at).toLocaleString("id-ID") : "Langsung"}</Td>
+                <Td>
+                  {campaign.scheduled_at
+                    ? new Date(campaign.scheduled_at).toLocaleString("id-ID")
+                    : "Langsung"}
+                </Td>
                 {onAction && (
                   <Td>
                     <div className="flex flex-wrap gap-1">
-                      <Button size="sm" variant="outline" onClick={() => onDetail(campaign)}>Detail</Button>
+                      <Button size="sm" variant="outline" onClick={() => onDetail(campaign)}>
+                        Detail
+                      </Button>
                       {["processing", "scheduled"].includes(campaign.status) && (
-                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("pause-campaign", campaign)}>Jeda</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === campaign.id}
+                          onClick={() => onAction("pause-campaign", campaign)}
+                        >
+                          Jeda
+                        </Button>
                       )}
                       {campaign.status === "paused" && (
-                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("resume-campaign", campaign)}>Lanjut</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === campaign.id}
+                          onClick={() => onAction("resume-campaign", campaign)}
+                        >
+                          Lanjut
+                        </Button>
                       )}
                       {campaign.failed_count > 0 && (
-                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("retry", campaign)}>Coba Lagi</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === campaign.id}
+                          onClick={() => onAction("retry", campaign)}
+                        >
+                          Coba Lagi
+                        </Button>
                       )}
                       {["draft", "scheduled", "processing", "paused"].includes(campaign.status) && (
-                        <Button size="sm" variant="outline" disabled={busyId === campaign.id} onClick={() => onAction("cancel-campaign", campaign)}>Batalkan</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === campaign.id}
+                          onClick={() => onAction("cancel-campaign", campaign)}
+                        >
+                          Batalkan
+                        </Button>
                       )}
                     </div>
                   </Td>
@@ -5499,7 +5362,11 @@ function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
               </tr>
             ))
           ) : (
-            <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Belum ada kampanye.</td></tr>
+            <tr>
+              <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                Belum ada kampanye.
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
@@ -5529,21 +5396,11 @@ function PageHeading({
   );
 }
 
-function Stat({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: any;
-  icon: ReactNode;
-}) {
+function Stat({ label, value, icon }: { label: string; value: any; icon: ReactNode }) {
   return (
     <Card>
       <CardContent className="flex items-center gap-4 p-5">
-        <span className="rounded-xl bg-emerald-50 p-3 text-emerald-600">
-          {icon}
-        </span>
+        <span className="rounded-xl bg-emerald-50 p-3 text-emerald-600">{icon}</span>
         <div>
           <p className="text-sm text-slate-500">{label}</p>
           <p className="text-2xl font-bold">{value}</p>
@@ -5571,11 +5428,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 function Center({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      {children}
-    </div>
-  );
+  return <div className="flex min-h-screen items-center justify-center">{children}</div>;
 }
 function Th({ children }: { children: ReactNode }) {
   return <th className="px-4 py-3 font-semibold">{children}</th>;
