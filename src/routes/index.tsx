@@ -3357,11 +3357,7 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
                 .split(/[\n,;]+/)
                 .map((email: string) => email.trim())
                 .filter(Boolean).length;
-              return [
-                categoryText,
-                `${chosenContacts.length} kontak tersimpan`,
-                manualCount ? `${manualCount} penerima tambahan` : "",
-              ]
+              return [categoryText, manualCount ? "Penerima tambahan" : ""]
                 .filter(Boolean)
                 .join(" · ");
             })(),
@@ -5320,12 +5316,12 @@ function CampaignTable({ campaigns, onAction, onDetail, busyId }: any) {
               <tr key={campaign.id} className="border-b hover:bg-slate-50">
                 <Td>
                   <b>{campaign.name}</b>
-                  <p className="mt-1 flex max-w-sm items-center gap-1.5 truncate text-xs font-medium text-emerald-700">
-                    <Users size={13} className="shrink-0" />
-                    <span className="truncate">
-                      {campaign.audience_summary || `${campaign.total_count} penerima`}
-                    </span>
-                  </p>
+                  {campaign.audience_summary && (
+                    <p className="mt-1 flex max-w-sm items-center gap-1.5 truncate text-xs font-medium text-emerald-700">
+                      <Users size={13} className="shrink-0" />
+                      <span className="truncate">{campaign.audience_summary}</span>
+                    </p>
+                  )}
                   <p className="max-w-xs truncate text-xs text-slate-500">{campaign.subject}</p>
                 </Td>
                 <Td>
