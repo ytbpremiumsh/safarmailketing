@@ -69,10 +69,19 @@ const addTracking = async (
 ) => {
   const signature = await signTracking(`${campaignId}:${recipientId}`, secret);
   const base = `${supabaseUrl}/functions/v1/email-track?c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recipientId)}&t=${signature}`;
+  const decodeHtmlUrl = (value: string) =>
+    value
+      .replace(/&amp;/gi, "&")
+      .replace(/&#38;/g, "&")
+      .replace(/&#x26;/gi, "&");
+  const asHtmlAttribute = (value: string) => value.replace(/&/g, "&amp;");
   const links = html.replace(
     /href=(["'])(https?:\/\/[^"'\s]+)\1/gi,
-    (_, quote, target) =>
-      `href=${quote}${base}&a=click&u=${encodeURIComponent(target)}${quote}`,
+    (_, quote, rawTarget) => {
+      const target = decodeHtmlUrl(rawTarget);
+      const trackedUrl = `${base}&a=click&u=${encodeURIComponent(target)}`;
+      return `href=${quote}${asHtmlAttribute(trackedUrl)}${quote}`;
+    },
   );
   const pixel = `<img src="${base}&amp;a=open&amp;v=2" width="1" height="1" alt="" border="0" style="display:block;width:1px;height:1px;border:0;overflow:hidden" />`;
   const footer = `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font:12px Arial,sans-serif;color:#64748b">Anda menerima email ini dari Safar Mail. <a href="${base}&amp;a=unsubscribe" style="color:#047857">Berhenti berlangganan</a></div>`;
