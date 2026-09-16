@@ -1569,11 +1569,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             workspace_sender: contactWorkspace,
           };
           if (isAyoPintar) {
-            contact.registration_code = valueFor("nis");
-            contact.full_name = valueFor("nama");
-            contact.email = valueFor("email").toLowerCase();
-            contact.first_name = contact.full_name;
-            contact.custom_fields = {
+            contact["registration_code"] = valueFor("nis");
+            contact["full_name"] = valueFor("nama");
+            contact["email"] = valueFor("email").toLowerCase();
+            contact["first_name"] = contact["full_name"];
+            contact["custom_fields"] = {
               nis: valueFor("nis"),
               no: valueFor("no"),
               level: valueFor("level"),
@@ -1587,11 +1587,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               const field = aliases[header];
               if (field) contact[field] = String(values[index] ?? "").trim();
             });
-            contact.first_name = contact.full_name;
+            contact["first_name"] = contact["full_name"];
           }
           return contact;
         })
-        .filter((contact) => contact.email);
+        .filter((contact) => contact["email"]);
 
       if (!rows.length) throw new Error("Tidak ada baris kontak dengan email yang valid.");
       for (let i = 0; i < rows.length; i += 250) {
@@ -1660,11 +1660,15 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             let password = "";
 
             if (startsWithEmail && cells.length >= 8) {
-              [email, mobile, fullName, jurusan, level, kelas, username, password] = cells;
+              [email, mobile, fullName, jurusan, level, kelas, username, password] = cells.map(
+                (cell) => cell ?? "",
+              );
               email = email.toLowerCase();
               nis = username;
             } else {
-              [nis, no, fullName, email, level, kelas, jurusan, username, password] = cells;
+              [nis, no, fullName, email, level, kelas, jurusan, username, password] = cells.map(
+                (cell) => cell ?? "",
+              );
               email = email.toLowerCase();
             }
 
@@ -1833,13 +1837,13 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       email: contact.email,
       mobile: contact.mobile ?? "",
       category: contact.category ?? "Umum",
-      nis: contact.custom_fields?.nis ?? contact.registration_code ?? "",
-      no: contact.custom_fields?.no ?? "",
-      level: contact.custom_fields?.level ?? "",
-      kelas: contact.custom_fields?.kelas ?? "",
-      jurusan: contact.custom_fields?.jurusan ?? "",
-      username: contact.custom_fields?.username ?? "",
-      password: contact.custom_fields?.password ?? "",
+      nis: contact.custom_fields?.["nis"] ?? contact.registration_code ?? "",
+      no: contact.custom_fields?.["no"] ?? "",
+      level: contact.custom_fields?.["level"] ?? "",
+      kelas: contact.custom_fields?.["kelas"] ?? "",
+      jurusan: contact.custom_fields?.["jurusan"] ?? "",
+      username: contact.custom_fields?.["username"] ?? "",
+      password: contact.custom_fields?.["password"] ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1849,15 +1853,15 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
       "noreply@ayopintar.com"
         ? [
-            ["NIS", contact.custom_fields?.nis ?? contact.registration_code],
-            ["No", contact.custom_fields?.no],
+            ["NIS", contact.custom_fields?.["nis"] ?? contact.registration_code],
+            ["No", contact.custom_fields?.["no"]],
             ["Nama", contact.full_name ?? contact.first_name],
             ["Email", contact.email],
-            ["Level", contact.custom_fields?.level],
-            ["Kelas", contact.custom_fields?.kelas],
-            ["Jurusan", contact.custom_fields?.jurusan],
-            ["Username CBT", contact.custom_fields?.username],
-            ["Password CBT", contact.custom_fields?.password],
+            ["Level", contact.custom_fields?.["level"]],
+            ["Kelas", contact.custom_fields?.["kelas"]],
+            ["Jurusan", contact.custom_fields?.["jurusan"]],
+            ["Username CBT", contact.custom_fields?.["username"]],
+            ["Password CBT", contact.custom_fields?.["password"]],
             ["Kategori", contact.category ?? "Umum"],
           ]
         : [
@@ -2440,12 +2444,12 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                         {isAyoPintar ? (
                           <div className="space-y-1 text-xs">
                             <div>
-                              {c.custom_fields?.level || "—"} · Kelas{" "}
-                              {c.custom_fields?.kelas || "—"} · {c.custom_fields?.jurusan || "—"}
+                              {c.custom_fields?.["level"] || "—"} · Kelas{" "}
+                              {c.custom_fields?.["kelas"] || "—"} · {c.custom_fields?.["jurusan"] || "—"}
                             </div>
                             <div className="font-medium">
-                              {c.custom_fields?.username || "—"} /{" "}
-                              {c.custom_fields?.password || "—"}
+                              {c.custom_fields?.["username"] || "—"} /{" "}
+                              {c.custom_fields?.["password"] || "—"}
                             </div>
                           </div>
                         ) : (
@@ -2554,7 +2558,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                         {isAyoPintar ? "Username CBT" : "WhatsApp"}
                       </dt>
                       <dd className="mt-1 font-medium text-slate-700">
-                        {isAyoPintar ? c.custom_fields?.username || "—" : c.mobile || "—"}
+                        {isAyoPintar ? c.custom_fields?.["username"] || "—" : c.mobile || "—"}
                       </dd>
                     </div>
                   </dl>
@@ -2679,7 +2683,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     "category",
   ]);
   const customKeywords = Array.from(
-    new Set(contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {}))),
+    new Set<string>(contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {}))),
   ).filter((keyword) => !legacyAliases.has(keyword));
   const keywords = [
     ...canonicalKeywords,
@@ -3027,8 +3031,8 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
               </div>
               {versions[t.id] && (
                 <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                  {versions[t.id].length
-                    ? versions[t.id].map((version: any) => (
+                  {(versions[t.id] ?? []).length
+                    ? (versions[t.id] ?? []).map((version: any) => (
                         <button
                           type="button"
                           key={version.id}
@@ -4159,7 +4163,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         [
           "unopened",
           "Belum dibuka",
-          detail.rows.filter(
+          (detail?.rows ?? []).filter(
             (row) => ["sent", "delivered"].includes(row.status) && !recipientOpenedAt(row),
           ).length,
         ],
@@ -4167,7 +4171,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         [
           "unclicked",
           "Belum klik",
-          detail.rows.filter(
+          (detail?.rows ?? []).filter(
             (row) => ["sent", "delivered"].includes(row.status) && !recipientClickedAt(row),
           ).length,
         ],
@@ -4175,7 +4179,11 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         ["bounced", "Bounce", detailStats.bounced],
         ["rejected", "Rejected", detailStats.rejected],
         ["pending", "Antre", detailStats.pending],
-        ["cancelled", "Dibatalkan", detail.rows.filter((row) => row.status === "cancelled").length],
+        [
+          "cancelled",
+          "Dibatalkan",
+          (detail?.rows ?? []).filter((row) => row.status === "cancelled").length,
+        ],
       ]
     : [];
 
