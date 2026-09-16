@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 53103)
-Total output lines: 5487
-
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -1572,11 +1569,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             workspace_sender: contactWorkspace,
           };
           if (isAyoPintar) {
-            contact.registration_code = valueFor("nis");
-            contact.full_name = valueFor("nama");
-            contact.email = valueFor("email").toLowerCase();
-            contact.first_name = contact.full_name;
-            contact.custom_fields = {
+            contact["registration_code"] = valueFor("nis");
+            contact["full_name"] = valueFor("nama");
+            contact["email"] = valueFor("email").toLowerCase();
+            contact["first_name"] = contact["full_name"];
+            contact["custom_fields"] = {
               nis: valueFor("nis"),
               no: valueFor("no"),
               level: valueFor("level"),
@@ -1590,11 +1587,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               const field = aliases[header];
               if (field) contact[field] = String(values[index] ?? "").trim();
             });
-            contact.first_name = contact.full_name;
+            contact["first_name"] = contact["full_name"];
           }
           return contact;
         })
-        .filter((contact) => contact.email);
+        .filter((contact) => contact["email"]);
 
       if (!rows.length) throw new Error("Tidak ada baris kontak dengan email yang valid.");
       for (let i = 0; i < rows.length; i += 250) {
@@ -1663,11 +1660,26 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             let password = "";
 
             if (startsWithEmail && cells.length >= 8) {
-              [email, mobile, fullName, jurusan, level, kelas, username, password] = cells;
+              email = cells[0] ?? "";
+              mobile = cells[1] ?? "";
+              fullName = cells[2] ?? "";
+              jurusan = cells[3] ?? "";
+              level = cells[4] ?? "";
+              kelas = cells[5] ?? "";
+              username = cells[6] ?? "";
+              password = cells[7] ?? "";
               email = email.toLowerCase();
               nis = username;
             } else {
-              [nis, no, fullName, email, level, kelas, jurusan, username, password] = cells;
+              nis = cells[0] ?? "";
+              no = cells[1] ?? "";
+              fullName = cells[2] ?? "";
+              email = cells[3] ?? "";
+              level = cells[4] ?? "";
+              kelas = cells[5] ?? "";
+              jurusan = cells[6] ?? "";
+              username = cells[7] ?? "";
+              password = cells[8] ?? "";
               email = email.toLowerCase();
             }
 
@@ -1836,13 +1848,13 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       email: contact.email,
       mobile: contact.mobile ?? "",
       category: contact.category ?? "Umum",
-      nis: contact.custom_fields?.nis ?? contact.registration_code ?? "",
-      no: contact.custom_fields?.no ?? "",
-      level: contact.custom_fields?.level ?? "",
-      kelas: contact.custom_fields?.kelas ?? "",
-      jurusan: contact.custom_fields?.jurusan ?? "",
-      username: contact.custom_fields?.username ?? "",
-      password: contact.custom_fields?.password ?? "",
+      nis: contact.custom_fields?.["nis"] ?? contact.registration_code ?? "",
+      no: contact.custom_fields?.["no"] ?? "",
+      level: contact.custom_fields?.["level"] ?? "",
+      kelas: contact.custom_fields?.["kelas"] ?? "",
+      jurusan: contact.custom_fields?.["jurusan"] ?? "",
+      username: contact.custom_fields?.["username"] ?? "",
+      password: contact.custom_fields?.["password"] ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1852,15 +1864,15 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
       String(contact.workspace_sender ?? "admin@safariman.id").toLowerCase() ===
       "noreply@ayopintar.com"
         ? [
-            ["NIS", contact.custom_fields?.nis ?? contact.registration_code],
-            ["No", contact.custom_fields?.no],
+            ["NIS", contact.custom_fields?.["nis"] ?? contact.registration_code],
+            ["No", contact.custom_fields?.["no"]],
             ["Nama", contact.full_name ?? contact.first_name],
             ["Email", contact.email],
-            ["Level", contact.custom_fields?.level],
-            ["Kelas", contact.custom_fields?.kelas],
-            ["Jurusan", contact.custom_fields?.jurusan],
-            ["Username CBT", contact.custom_fields?.username],
-            ["Password CBT", contact.custom_fields?.password],
+            ["Level", contact.custom_fields?.["level"]],
+            ["Kelas", contact.custom_fields?.["kelas"]],
+            ["Jurusan", contact.custom_fields?.["jurusan"]],
+            ["Username CBT", contact.custom_fields?.["username"]],
+            ["Password CBT", contact.custom_fields?.["password"]],
             ["Kategori", contact.category ?? "Umum"],
           ]
         : [
@@ -2443,12 +2455,12 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                         {isAyoPintar ? (
                           <div className="space-y-1 text-xs">
                             <div>
-                              {c.custom_fields?.level || "—"} · Kelas{" "}
-                              {c.custom_fields?.kelas || "—"} · {c.custom_fields?.jurusan || "—"}
+                              {c.custom_fields?.["level"] || "—"} · Kelas{" "}
+                              {c.custom_fields?.["kelas"] || "—"} · {c.custom_fields?.["jurusan"] || "—"}
                             </div>
                             <div className="font-medium">
-                              {c.custom_fields?.username || "—"} /{" "}
-                              {c.custom_fields?.password || "—"}
+                              {c.custom_fields?.["username"] || "—"} /{" "}
+                              {c.custom_fields?.["password"] || "—"}
                             </div>
                           </div>
                         ) : (
@@ -2557,7 +2569,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                         {isAyoPintar ? "Username CBT" : "WhatsApp"}
                       </dt>
                       <dd className="mt-1 font-medium text-slate-700">
-                        {isAyoPintar ? c.custom_fields?.username || "—" : c.mobile || "—"}
+                        {isAyoPintar ? c.custom_fields?.["username"] || "—" : c.mobile || "—"}
                       </dd>
                     </div>
                   </dl>
@@ -2574,7 +2586,359 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       type="button"
                       size="sm"
                       variant="outline"
-                      disa…3103 tokens truncated…  <div className="flex flex-wrap gap-2">
+                      disabled={busy}
+                      onClick={() => editContact(c)}
+                    >
+                      <Pencil /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => toggleSuppression(c)}
+                    >
+                      {(c.status ?? "active") === "active" ? "Blokir" : "Aktif"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => deleteContacts([c.id])}
+                    >
+                      <Trash2 /> Hapus
+                    </Button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="px-4 py-10 text-center text-sm text-slate-500">
+                Kontak tidak ditemukan.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-center text-xs text-slate-500 sm:text-left">
+              Halaman {safeContactPage} dari {totalContactPages} · {filteredContacts.length} kontak
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safeContactPage <= 1}
+                onClick={() => setContactPage((page) => Math.max(1, page - 1))}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safeContactPage >= totalContactPages}
+                onClick={() => setContactPage((page) => Math.min(totalContactPages, page + 1))}
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function Templates({ templates, contacts, token, userId, reload, setNotice }: any) {
+  const [f, setF] = useState({
+    name: "",
+    subject: "",
+    html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
+    category: "Umum",
+  });
+  const [preview, setPreview] = useState(true);
+  const [savedPreview, setSavedPreview] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("all");
+  const [versions, setVersions] = useState<Record<string, any[]>>({});
+  const templateCategories = Array.from(
+    new Set(templates.map((template: Template) => template.category || "Umum")),
+  ).sort() as string[];
+  const filteredTemplates = templates.filter((template: Template) => {
+    const matchesCategory =
+      templateCategory === "all" || (template.category || "Umum") === templateCategory;
+    const query = templateSearch.trim().toLowerCase();
+    return (
+      matchesCategory &&
+      (!query || `${template.name} ${template.subject}`.toLowerCase().includes(query))
+    );
+  });
+  const canonicalKeywords = [
+    { key: "kode", label: "Kode Pendaftaran" },
+    { key: "nama", label: "Nama Lengkap" },
+    { key: "email", label: "Email" },
+    { key: "whatsapp", label: "WhatsApp" },
+    { key: "kategori", label: "Kategori" },
+  ];
+  const legacyAliases = new Set([
+    "kode_pendaftaran",
+    "registration_code",
+    "daftar_nama",
+    "full_name",
+    "first_name",
+    "last_name",
+    "mobile",
+    "category",
+  ]);
+  const customKeywords = Array.from(
+    new Set<string>(contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {}))),
+  ).filter((keyword) => !legacyAliases.has(keyword));
+  const keywords = [
+    ...canonicalKeywords,
+    ...customKeywords.map((key) => ({ key, label: "Field tambahan" })),
+  ];
+  const sample = contacts[0] as Contact | undefined;
+  const sampleVariables: Record<string, string> = {
+    kode: sample?.registration_code || "HXP-001",
+    nama:
+      sample?.full_name ||
+      [sample?.first_name, sample?.last_name].filter(Boolean).join(" ") ||
+      "Nama Penerima",
+    email: sample?.email || "penerima@email.com",
+    whatsapp: sample?.mobile || "081234567890",
+    kategori: sample?.category || "Umum",
+    ...(sample?.custom_fields ?? {}),
+  };
+  const renderPreview = (value: string) =>
+    value.replace(/{{\s*([^{}]+)\s*}}/g, (_, key) => sampleVariables[key] ?? `{{${key}}}`);
+
+  const insertKeyword = (keyword: string, target: "subject" | "html_content") => {
+    const value = `{{${keyword}}}`;
+    setF((current) => ({
+      ...current,
+      [target]: `${current[target]}${current[target] ? " " : ""}${value}`,
+    }));
+  };
+  const resetEditor = () => {
+    setEditingId(null);
+    setF({
+      name: "",
+      subject: "",
+      html_content: "<h2>Halo {{nama}}</h2><p>Tulis isi email.</p>",
+      category: "Umum",
+    });
+  };
+  const editTemplate = (template: Template) => {
+    setEditingId(template.id);
+    setF({
+      name: template.name,
+      subject: template.subject,
+      html_content: template.html_content,
+      category: template.category || "Umum",
+    });
+    setPreview(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const save = async () => {
+    setSaving(true);
+    try {
+      if (editingId) {
+        const current = templates.find((template: Template) => template.id === editingId);
+        if (current) {
+          const existing = await api(
+            `/rest/v1/template_versions?template_id=eq.${editingId}&select=id`,
+            token,
+          );
+          await api("/rest/v1/template_versions", token, {
+            method: "POST",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              template_id: editingId,
+              name: current.name,
+              subject: current.subject,
+              html_content: current.html_content,
+              version_number: existing.length + 1,
+              created_by: userId,
+            }),
+          });
+        }
+      }
+      await api(editingId ? `/rest/v1/templates?id=eq.${editingId}` : "/rest/v1/templates", token, {
+        method: editingId ? "PATCH" : "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify(editingId ? f : { ...f, created_by: userId }),
+      });
+      const wasEditing = Boolean(editingId);
+      await reload();
+      resetEditor();
+      setNotice({
+        success: true,
+        message: wasEditing
+          ? "Perubahan template berhasil disimpan."
+          : "Template baru berhasil disimpan.",
+      });
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal menyimpan template.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const duplicateTemplate = async (template: Template) => {
+    setSaving(true);
+    try {
+      await api("/rest/v1/templates", token, {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          name: `${template.name} (Salinan)`,
+          subject: template.subject,
+          html_content: template.html_content,
+          category: template.category || "Umum",
+          created_by: userId,
+        }),
+      });
+      await reload();
+      setNotice({ success: true, message: "Template berhasil diduplikat." });
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal menduplikat template.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteTemplate = async (template: Template) => {
+    if (!window.confirm(`Hapus template “${template.name}”?`)) return;
+    try {
+      await api(`/rest/v1/templates?id=eq.${template.id}`, token, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      await reload();
+      setNotice({ success: true, message: "Template berhasil dihapus." });
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Gagal menghapus template.",
+      });
+    }
+  };
+
+  const toggleVersions = async (templateId: string) => {
+    if (versions[templateId]) {
+      setVersions((current) => {
+        const next = { ...current };
+        delete next[templateId];
+        return next;
+      });
+      return;
+    }
+    try {
+      const rows = await api(
+        `/rest/v1/template_versions?template_id=eq.${templateId}&select=*&order=version_number.desc`,
+        token,
+      );
+      setVersions((current) => ({ ...current, [templateId]: rows }));
+    } catch (e) {
+      setNotice({
+        success: false,
+        message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat.",
+      });
+    }
+  };
+
+  return (
+    <>
+      <PageHeading
+        title="Template Email"
+        description="Buat desain HTML dan lihat hasil personalisasi secara langsung."
+        icon={<LayoutTemplate />}
+      />
+      <Card>
+        <CardHeader className="border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>{editingId ? "Edit Template" : "Buat Template Baru"}</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                {editingId
+                  ? "Ubah isi template lalu simpan perubahan."
+                  : "Susun template yang dapat digunakan pada kampanye."}
+              </p>
+            </div>
+            {editingId && (
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                Mode edit
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-5">
+          <Field label="Nama template">
+            <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Kategori template">
+              <Input
+                value={f.category}
+                onChange={(e) => setF({ ...f, category: e.target.value })}
+                placeholder="Contoh: Reminder"
+              />
+            </Field>
+          </div>
+          <Field label="Subjek">
+            <Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} />
+          </Field>
+          <div className="space-y-2">
+            <Label>Keyword data kontak</Label>
+            <div className="flex flex-wrap gap-2">
+              {keywords.map(({ key: keyword, label }) => (
+                <div
+                  key={keyword}
+                  className="flex overflow-hidden rounded-lg border bg-white text-xs"
+                >
+                  <span className="px-2 py-1.5">
+                    <b className="block font-medium text-slate-700">{label}</b>
+                    <code className="text-[11px] text-emerald-700">{`{{${keyword}}}`}</code>
+                  </span>
+                  <button
+                    type="button"
+                    className="border-l px-2 hover:bg-slate-50"
+                    onClick={() => insertKeyword(keyword, "subject")}
+                  >
+                    + Subjek
+                  </button>
+                  <button
+                    type="button"
+                    className="border-l px-2 hover:bg-slate-50"
+                    onClick={() => insertKeyword(keyword, "html_content")}
+                  >
+                    + Isi
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Pilihan utama mengikuti field kontak. Keyword lama tetap didukung di template yang
+              sudah tersimpan.
+            </p>
+          </div>
+          <Field label="HTML">
+            <Textarea
+              rows={10}
+              className="font-mono"
+              value={f.html_content}
+              onChange={(e) => setF({ ...f, html_content: e.target.value })}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !f.name || !f.subject || !f.html_content}>
               {saving ? (
                 <Loader2 className="animate-spin" />
@@ -2678,8 +3042,8 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
               </div>
               {versions[t.id] && (
                 <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                  {versions[t.id].length
-                    ? versions[t.id].map((version: any) => (
+                  {(versions[t.id] ?? []).length
+                    ? (versions[t.id] ?? []).map((version: any) => (
                         <button
                           type="button"
                           key={version.id}
@@ -3810,7 +4174,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         [
           "unopened",
           "Belum dibuka",
-          detail.rows.filter(
+          (detail?.rows ?? []).filter(
             (row) => ["sent", "delivered"].includes(row.status) && !recipientOpenedAt(row),
           ).length,
         ],
@@ -3818,7 +4182,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         [
           "unclicked",
           "Belum klik",
-          detail.rows.filter(
+          (detail?.rows ?? []).filter(
             (row) => ["sent", "delivered"].includes(row.status) && !recipientClickedAt(row),
           ).length,
         ],
@@ -3826,7 +4190,11 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
         ["bounced", "Bounce", detailStats.bounced],
         ["rejected", "Rejected", detailStats.rejected],
         ["pending", "Antre", detailStats.pending],
-        ["cancelled", "Dibatalkan", detail.rows.filter((row) => row.status === "cancelled").length],
+        [
+          "cancelled",
+          "Dibatalkan",
+          (detail?.rows ?? []).filter((row) => row.status === "cancelled").length,
+        ],
       ]
     : [];
 
