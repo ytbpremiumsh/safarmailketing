@@ -654,9 +654,9 @@ export default {
           admin.from("campaign_recipients")
             .select("id,email,contact_id")
             .eq("campaign_id", input.campaign_id)
-            // Rejected 401/403 dapat berasal dari jalur API, bukan alamat email.
-            // Bounce sengaja tidak dimasukkan agar alamat bermasalah tidak dikirim ulang.
-            .in("status", ["failed", "rejected"])
+            // Pending/cancelled adalah penerima yang belum sempat dikirim saat
+            // kampanye dihentikan. Sent/delivered dan bounced tidak pernah dipilih.
+            .in("status", ["pending", "cancelled", "failed", "rejected"])
             .limit(10000),
           admin.from("suppressions").select("email")
             .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
@@ -685,8 +685,10 @@ export default {
             const batch = eligibleIds.slice(index, index + 500);
             await admin.from("campaign_recipients").update({
               status: "pending",
+              attempts: 0,
+              next_attempt_at: new Date().toISOString(),
               last_error: null,
-              provider_message: "Menunggu pengiriman ulang",
+              provider_message: "Menunggu kampanye dilanjutkan",
               provider_response: null,
               provider_status_code: null,
               updated_at: new Date().toISOString(),
@@ -695,13 +697,28 @@ export default {
         }
         await admin.from("campaigns").update({
           status: eligibleIds.length ? "processing" : "partial",
+          completed_at: eligibleIds.length ? null : undefined,
+          paused_at: eligibleIds.length ? null : undefined,
+          cancelled_at: eligibleIds.length ? null : undefined,
           updated_at: new Date().toISOString(),
         }).eq("id", input.campaign_id);
+        await admin.from("audit_logs").insert({
+          user_id: userId,
+          action: "campaign.retried",
+          entity_type: "campaign",
+          entity_id: input.campaign_id,
+          metadata: {
+            queued_count: eligibleIds.length,
+            suppressed_count: (failedRows ?? []).length - eligibleIds.length,
+          },
+        });
         return json({
           success: true,
           retry_count: eligibleIds.length,
           suppressed_count: (failedRows ?? []).length - eligibleIds.length,
-          message: `${eligibleIds.length} email aman dimasukkan kembali ke antrean; ${(failedRows ?? []).length - eligibleIds.length} kontak bounce/nonaktif diblokir.`,
+          message: eligibleIds.length
+            ? `${eligibleIds.length} email yang belum terkirim dilanjutkan; email yang sudah terkirim tidak diulang. ${(failedRows ?? []).length - eligibleIds.length} kontak bounce/nonaktif diblokir.`
+            : "Tidak ada email tersisa yang aman untuk dilanjutkan. Email terkirim, bounce, blacklist, dan unsubscribe tidak diulang.",
         });
       }
       if (action === "process-queue") {
