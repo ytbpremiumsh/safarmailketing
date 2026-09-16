@@ -2884,6 +2884,46 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
           <div className="space-y-2">
             <Label>Keyword data kontak</Label>
             <div className="flex flex-wrap gap-2">
+              {keywords.map(({ key: keyword, label }) => (
+                <div
+                  key={keyword}
+                  className="flex overflow-hidden rounded-lg border bg-white text-xs"
+                >
+                  <span className="px-2 py-1.5">
+                    <b className="block font-medium text-slate-700">{label}</b>
+                    <code className="text-[11px] text-emerald-700">{`{{${keyword}}}`}</code>
+                  </span>
+                  <button
+                    type="button"
+                    className="border-l px-2 hover:bg-slate-50"
+                    onClick={() => insertKeyword(keyword, "subject")}
+                  >
+                    + Subjek
+                  </button>
+                  <button
+                    type="button"
+                    className="border-l px-2 hover:bg-slate-50"
+                    onClick={() => insertKeyword(keyword, "html_content")}
+                  >
+                    + Isi
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Pilihan utama mengikuti field kontak. Keyword lama tetap didukung di template yang
+              sudah tersimpan.
+            </p>
+          </div>
+          <Field label="HTML">
+            <Textarea
+              rows={10}
+              className="font-mono"
+              value={f.html_content}
+              onChange={(e) => setF({ ...f, html_content: e.target.value })}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !f.name || !f.subject || !f.html_content}>
               {saving ? (
                 <Loader2 className="animate-spin" />
