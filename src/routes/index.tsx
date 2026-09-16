@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 53078)
-Total output lines: 5486
+Warning: truncated output (original token count: 53103)
+Total output lines: 5487
 
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -729,7 +729,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       }
     };
     refreshDailyStats();
-    const interval = window.setInterval(refreshDailyStats, 30000);
+    const interval = window.setInterval(refreshDailyStats, 60000);
     window.addEventListener("focus", refreshDailyStats);
     return () => {
       active = false;
@@ -762,7 +762,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
         refreshing = false;
       }
     };
-    const interval = window.setInterval(refreshProgress, 15000);
+    const interval = window.setInterval(refreshProgress, 30000);
     window.addEventListener("focus", refreshProgress);
     return () => {
       window.clearInterval(interval);
@@ -810,7 +810,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       if (document.visibilityState === "visible") sync({ silent: true });
     };
     refreshCredits();
-    const interval = window.setInterval(refreshCredits, 10000);
+    const interval = window.setInterval(refreshCredits, 30000);
     window.addEventListener("focus", refreshCredits);
     document.addEventListener("visibilitychange", refreshCredits);
     return () => {
@@ -2574,10 +2574,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                       type="button"
                       size="sm"
                       variant="outline"
-                      disa…3078 tokens truncated…={(e) => setF({ ...f, html_content: e.target.value })}
-            />
-          </Field>
-          <div className="flex flex-wrap gap-2">
+                      disa…3103 tokens truncated…  <div className="flex flex-wrap gap-2">
             <Button onClick={save} disabled={saving || !f.name || !f.subject || !f.html_content}>
               {saving ? (
                 <Loader2 className="animate-spin" />
@@ -3696,11 +3693,12 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
   useEffect(() => {
     if (!detail) return;
     const campaign = detail.campaign;
+    if (!["processing", "scheduled"].includes(campaign.status)) return;
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadDetailRows(campaign, true);
-    }, 10000);
+    }, 30000);
     return () => window.clearInterval(interval);
-  }, [detail?.campaign.id, token]);
+  }, [detail?.campaign.id, detail?.campaign.status, token]);
 
   const exportCsv = (rows: unknown[][], filename: string) => {
     const csv =
