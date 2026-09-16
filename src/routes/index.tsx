@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 53103)
-Total output lines: 5487
-
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
