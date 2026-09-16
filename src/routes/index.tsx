@@ -1660,15 +1660,26 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             let password = "";
 
             if (startsWithEmail && cells.length >= 8) {
-              [email, mobile, fullName, jurusan, level, kelas, username, password] = cells.map(
-                (cell) => cell ?? "",
-              );
+              email = cells[0] ?? "";
+              mobile = cells[1] ?? "";
+              fullName = cells[2] ?? "";
+              jurusan = cells[3] ?? "";
+              level = cells[4] ?? "";
+              kelas = cells[5] ?? "";
+              username = cells[6] ?? "";
+              password = cells[7] ?? "";
               email = email.toLowerCase();
               nis = username;
             } else {
-              [nis, no, fullName, email, level, kelas, jurusan, username, password] = cells.map(
-                (cell) => cell ?? "",
-              );
+              nis = cells[0] ?? "";
+              no = cells[1] ?? "";
+              fullName = cells[2] ?? "";
+              email = cells[3] ?? "";
+              level = cells[4] ?? "";
+              kelas = cells[5] ?? "";
+              jurusan = cells[6] ?? "";
+              username = cells[7] ?? "";
+              password = cells[8] ?? "";
               email = email.toLowerCase();
             }
 
