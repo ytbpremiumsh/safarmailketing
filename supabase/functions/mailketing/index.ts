@@ -480,10 +480,15 @@ export default {
         }));
       const sendEmail = async (payload: Record<string, unknown>) => {
         const primary = await provider("/send", payload);
+        const primaryStatus = Number(primary.http_status ?? 0);
         if (
           primary.success ||
-          !/internal server error|http 5\d\d/i.test(
-            String(primary.message ?? `HTTP ${primary.http_status ?? ""}`),
+          !(
+            [401, 403].includes(primaryStatus) ||
+            primaryStatus >= 500 ||
+            /internal server error|http 5\d\d/i.test(
+              String(primary.message ?? `HTTP ${primaryStatus || ""}`),
+            )
           )
         ) {
           return primary;
@@ -649,7 +654,9 @@ export default {
           admin.from("campaign_recipients")
             .select("id,email,contact_id")
             .eq("campaign_id", input.campaign_id)
-            .eq("status", "failed")
+            // Rejected 401/403 dapat berasal dari jalur API, bukan alamat email.
+            // Bounce sengaja tidak dimasukkan agar alamat bermasalah tidak dikirim ulang.
+            .in("status", ["failed", "rejected"])
             .limit(10000),
           admin.from("suppressions").select("email")
             .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
@@ -673,14 +680,18 @@ export default {
           )
           .map((row: any) => row.id);
         if (eligibleIds.length) {
-          await admin.from("campaign_recipients").update({
-            status: "pending",
-            last_error: null,
-            provider_message: "Menunggu pengiriman ulang",
-            provider_response: null,
-            provider_status_code: null,
-            updated_at: new Date().toISOString(),
-          }).in("id", eligibleIds);
+          // Hindari URL PostgREST terlalu panjang saat ribuan penerima diulang.
+          for (let index = 0; index < eligibleIds.length; index += 500) {
+            const batch = eligibleIds.slice(index, index + 500);
+            await admin.from("campaign_recipients").update({
+              status: "pending",
+              last_error: null,
+              provider_message: "Menunggu pengiriman ulang",
+              provider_response: null,
+              provider_status_code: null,
+              updated_at: new Date().toISOString(),
+            }).in("id", batch);
+          }
         }
         await admin.from("campaigns").update({
           status: eligibleIds.length ? "processing" : "partial",
