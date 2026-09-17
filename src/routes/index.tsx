@@ -714,24 +714,19 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
         });
         if (active) setDailyStats(Array.isArray(rows) ? rows : []);
       } catch (error) {
-        if (active) {
-          setNotice({
-            success: false,
-            message: error instanceof Error ? error.message : "Statistik harian gagal dimuat.",
-          });
-        }
+        // Statistik adalah informasi pendukung. Pertahankan data terakhir dan
+        // jangan menutupi dashboard dengan error global jika refresh sementara gagal.
+        console.warn("Statistik harian gagal diperbarui; data terakhir dipertahankan.", error);
       } finally {
         refreshing = false;
         if (active) setDailyStatsLoading(false);
       }
     };
     refreshDailyStats();
-    const interval = window.setInterval(refreshDailyStats, 60000);
-    window.addEventListener("focus", refreshDailyStats);
+    const interval = window.setInterval(refreshDailyStats, 300000);
     return () => {
       active = false;
       window.clearInterval(interval);
-      window.removeEventListener("focus", refreshDailyStats);
     };
   }, [token, view, dailyRange]);
   // Pengiriman berjalan mandiri melalui Supabase Cron.
@@ -1146,7 +1141,7 @@ function Overview({
             <div>
               <CardTitle>Statistik Pengiriman Email Harian</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
-                Aktivitas berdasarkan WIB, diperbarui otomatis setiap 30 detik.
+                Aktivitas berdasarkan WIB, diperbarui otomatis setiap 5 menit.
               </p>
             </div>
             <div className="flex w-fit rounded-xl bg-slate-100 p-1">
