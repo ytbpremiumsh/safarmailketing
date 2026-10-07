@@ -232,7 +232,21 @@ async function api(path: string, token: string, init?: RequestInit, retry = true
     const freshToken = await refreshAccessTokenHandler();
     if (freshToken) return api(path, freshToken, init, false);
   }
-  if (!response.ok) throw new Error(message || `HTTP ${response.status}`);
+  if (!response.ok) {
+    if (path.startsWith("/rest/v1/contacts")) {
+      if (data?.code === "PGRST204" || data?.code === "42P10") {
+        throw new Error(
+          "Skema kontak belum diperbarui. Terapkan migrasi contact_workspace_storage di Supabase, lalu coba simpan kembali.",
+        );
+      }
+      if (data?.code === "23505") {
+        throw new Error(
+          "Email sudah terdaftar. Edit kontak yang ada atau periksa kunci unik workspace dan email di database.",
+        );
+      }
+    }
+    throw new Error(message || `HTTP ${response.status}`);
+  }
   return data;
 }
 
@@ -1365,19 +1379,31 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
   }, [contactQuery, contactCategoryFilter, contactSystemFilter, rowsPerPage]);
 
   const save = async () => {
+    if (busy) return;
+    const email = form.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setNotice({ success: false, message: "Masukkan alamat email yang valid." });
+      return;
+    }
     setBusy(true);
     try {
-      await api(
-        editingContactId ? `/rest/v1/contacts?id=eq.${editingContactId}` : "/rest/v1/contacts",
+      const saved = await api(
+        editingContactId
+          ? `/rest/v1/contacts?id=eq.${editingContactId}`
+          : "/rest/v1/contacts?on_conflict=workspace_sender,email",
         token,
         {
           method: editingContactId ? "PATCH" : "POST",
-          headers: { Prefer: "return=minimal" },
+          headers: {
+            Prefer: editingContactId
+              ? "return=representation"
+              : "resolution=merge-duplicates,return=representation",
+          },
           body: JSON.stringify({
             registration_code: isAyoPintar ? form.nis : form.registration_code,
             full_name: form.full_name,
             first_name: form.full_name,
-            email: form.email.trim().toLowerCase(),
+            email,
             mobile: isAyoPintar ? null : form.mobile,
             category: form.category,
             workspace_sender: contactWorkspace,
@@ -1396,6 +1422,11 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
           }),
         },
       );
+      if (!Array.isArray(saved) || saved.length !== 1) {
+        throw new Error(
+          "Kontak belum tersimpan. Periksa izin akses kontak atau muat ulang daftar kontak.",
+        );
+      }
       const wasEditing = Boolean(editingContactId);
       setEditingContactId(null);
       setForm(emptyForm);
@@ -1589,17 +1620,25 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
         .filter((contact) => contact["email"]);
 
       if (!rows.length) throw new Error("Tidak ada baris kontak dengan email yang valid.");
-      for (let i = 0; i < rows.length; i += 250) {
+      const uniqueRows = Array.from(
+        new Map(
+          rows.map((row) => [
+            String(row["email"]).trim().toLowerCase(),
+            { ...row, email: String(row["email"]).trim().toLowerCase() },
+          ]),
+        ).values(),
+      );
+      for (let i = 0; i < uniqueRows.length; i += 250) {
         await api("/rest/v1/contacts?on_conflict=workspace_sender,email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify(rows.slice(i, i + 250)),
+          body: JSON.stringify(uniqueRows.slice(i, i + 250)),
         });
       }
       await reload();
       setNotice({
         success: true,
-        message: `${rows.length} kontak dari ${file.name} berhasil diproses.`,
+        message: `${uniqueRows.length} kontak dari ${file.name} berhasil diproses.`,
       });
     } catch (e) {
       setNotice({
@@ -1745,20 +1784,23 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
             : "Belum ada kontak valid untuk disimpan.",
         );
 
+      const uniqueRows = Array.from(
+        new Map(rows.map((row) => [String(row.email).trim().toLowerCase(), row])).values(),
+      );
       const batchSize = 200;
-      for (let i = 0; i < rows.length; i += batchSize)
+      for (let i = 0; i < uniqueRows.length; i += batchSize)
         await api("/rest/v1/contacts?on_conflict=workspace_sender,email", token, {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify(rows.slice(i, i + batchSize)),
+          body: JSON.stringify(uniqueRows.slice(i, i + batchSize)),
         });
       setBulkText("");
       await reload();
       setNotice({
         success: true,
         message: invalidLines.length
-          ? `${rows.length} kontak disimpan. ${invalidLines.length} baris dilewati: ${invalidLines.slice(0, 10).join(", ")}${invalidLines.length > 10 ? " dan lainnya" : ""}.`
-          : `${rows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
+          ? `${uniqueRows.length} kontak disimpan. ${invalidLines.length} baris dilewati: ${invalidLines.slice(0, 10).join(", ")}${invalidLines.length > 10 ? " dan lainnya" : ""}.`
+          : `${uniqueRows.length} kontak berhasil dimasukkan ke kategori “${importCategory.trim() || "Umum"}”.`,
       });
     } catch (e) {
       setNotice({
@@ -2451,7 +2493,8 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
                           <div className="space-y-1 text-xs">
                             <div>
                               {c.custom_fields?.["level"] || "—"} · Kelas{" "}
-                              {c.custom_fields?.["kelas"] || "—"} · {c.custom_fields?.["jurusan"] || "—"}
+                              {c.custom_fields?.["kelas"] || "—"} ·{" "}
+                              {c.custom_fields?.["jurusan"] || "—"}
                             </div>
                             <div className="font-medium">
                               {c.custom_fields?.["username"] || "—"} /{" "}
@@ -2689,7 +2732,9 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     "category",
   ]);
   const customKeywords = Array.from(
-    new Set<string>(contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {}))),
+    new Set<string>(
+      contacts.flatMap((contact: Contact) => Object.keys(contact.custom_fields ?? {})),
+    ),
   ).filter((keyword) => !legacyAliases.has(keyword));
   const keywords = [
     ...canonicalKeywords,
