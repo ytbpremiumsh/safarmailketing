@@ -13,6 +13,69 @@ const json = (body: unknown, status = 200) =>
 const interpolate = (value: string, variables: Record<string, unknown>) =>
   value.replace(/{{\s*([\w.]+)\s*}}/g, (_, key) => String(variables[key] ?? ""));
 
+const countMatches = (value: string, pattern: RegExp) =>
+  (value.match(pattern) ?? []).length;
+
+const prepareEmailHtml = (value: unknown) => {
+  let html = String(value ?? "")
+    .replace(/^\uFEFF/, "")
+    .replace(/^\s*```(?:html)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .replace(/\u0000/g, "")
+    .trim();
+
+  if (!html) {
+    return { html: "", visibleTextLength: 0, error: "Body email HTML masih kosong." };
+  }
+
+  const pairs = [
+    { name: "komentar HTML", open: /<!--/g, close: /-->/g },
+    { name: "<style>", open: /<style\b[^>]*>/gi, close: /<\/style\s*>/gi },
+    { name: "<script>", open: /<script\b[^>]*>/gi, close: /<\/script\s*>/gi },
+    { name: "<body>", open: /<body\b[^>]*>/gi, close: /<\/body\s*>/gi },
+  ];
+  for (const pair of pairs) {
+    if (countMatches(html, pair.open) !== countMatches(html, pair.close)) {
+      return {
+        html: "",
+        visibleTextLength: 0,
+        error: `${pair.name} belum tertutup dengan benar. Periksa kembali kode HTML email.`,
+      };
+    }
+  }
+
+  // Mailketing lebih konsisten menerima dokumen HTML lengkap daripada fragment.
+  if (!/<html\b[^>]*>/i.test(html)) {
+    html = `<!doctype html><html><head><meta charset="UTF-8"></head><body>${html}</body></html>`;
+  } else if (!/<body\b[^>]*>/i.test(html)) {
+    html = html.replace(/<\/head\s*>/i, "</head><body>");
+    html = /<\/html\s*>/i.test(html)
+      ? html.replace(/<\/html\s*>/i, "</body></html>")
+      : `${html}</body></html>`;
+  }
+
+  const readable = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(style|script|head)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(?:nbsp|zwnj|zwj);/gi, " ")
+    .replace(/&#(?:8204|8205);/g, " ")
+    .replace(/&[a-z]+;|&#\d+;|&#x[\da-f]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const hasMeaningfulImage = /<img\b[^>]*\bsrc\s*=\s*["'][^"']+["'][^>]*>/i.test(html);
+
+  if (!readable && !hasMeaningfulImage) {
+    return {
+      html: "",
+      visibleTextLength: 0,
+      error: "Body email tidak memiliki teks atau gambar yang dapat ditampilkan.",
+    };
+  }
+
+  return { html, visibleTextLength: readable.length, error: null };
+};
+
 const normalizeToken = (value: unknown) => {
   let token = String(value ?? "").trim();
   token = token.replace(/^['\"]|['\"]$/g, "");
@@ -479,7 +542,23 @@ export default {
           http_status: 0,
         }));
       const sendEmail = async (payload: Record<string, unknown>) => {
-        const primary = await provider("/send", payload);
+        const prepared = prepareEmailHtml(payload.content);
+        if (prepared.error) {
+          return {
+            success: false,
+            http_status: 422,
+            message: prepared.error,
+            transport: "html-validation",
+          };
+        }
+        const normalizedPayload = { ...payload, content: prepared.html };
+
+        // Gunakan endpoint resmi V1 sebagai jalur utama. Proxy V2 pernah
+        // mengembalikan sukses tetapi menghapus seluruh elemen body HTML.
+        const primary = await requestMailketingV1Send(
+          normalizeToken(token),
+          normalizedPayload,
+        );
         const primaryStatus = Number(primary.http_status ?? 0);
         if (
           primary.success ||
@@ -491,12 +570,22 @@ export default {
             )
           )
         ) {
-          return primary;
+          return {
+            ...primary,
+            html_length: prepared.html.length,
+            visible_text_length: prepared.visibleTextLength,
+          };
         }
-        console.warn("Mailketing v2 send failed; using official v1 transport", {
+        console.warn("Mailketing official v1 send failed; using v2 fallback", {
           provider_status: primary.http_status,
         });
-        return requestMailketingV1Send(normalizeToken(token), payload);
+        const fallback = await provider("/send", normalizedPayload);
+        return {
+          ...fallback,
+          transport: fallback.transport ?? "mailketing-v2-fallback",
+          html_length: prepared.html.length,
+          visible_text_length: prepared.visibleTextLength,
+        };
       };
 
       if (action === "sync") {
@@ -559,7 +648,15 @@ export default {
         return json(await provider("/verify-sender", { email: input.email }, true));
       }
       if (action === "send-test") {
-        const payload = { ...input.email, recipient: input.recipient };
+        const prepared = prepareEmailHtml(input.email?.content);
+        if (prepared.error) {
+          return json({ success: false, message: prepared.error }, 422);
+        }
+        const payload = {
+          ...input.email,
+          content: prepared.html,
+          recipient: input.recipient,
+        };
         if (input.corporate) {
           return json(await provider("/send", payload, true));
         }
@@ -572,6 +669,11 @@ export default {
         if (!campaign.name || !campaign.from_email || !campaign.subject || !campaign.html_content || !requested.length) {
           return json({ success: false, message: "Data kampanye belum lengkap." }, 422);
         }
+        const preparedCampaignHtml = prepareEmailHtml(campaign.html_content);
+        if (preparedCampaignHtml.error) {
+          return json({ success: false, message: preparedCampaignHtml.error }, 422);
+        }
+        campaign.html_content = preparedCampaignHtml.html;
         if (idempotencyKey) {
           const { data: duplicate } = await admin.from("campaigns").select("id,status").eq("idempotency_key", idempotencyKey).maybeSingle();
           if (duplicate) return json({ success: false, code: "DUPLICATE_CAMPAIGN", campaign_id: duplicate.id, message: "Kampanye ini sudah pernah dibuat. Pengiriman ganda dicegah." }, 409);
@@ -851,8 +953,28 @@ export default {
                 campaign.html_content,
                 variables,
               );
+              const preparedContent = prepareEmailHtml(personalizedContent);
+              if (preparedContent.error) {
+                await admin
+                  .from("campaign_recipients")
+                  .update({
+                    status: "failed",
+                    last_error: preparedContent.error,
+                    provider_message: preparedContent.error,
+                    provider_response: {
+                      success: false,
+                      transport: "html-validation",
+                    },
+                    provider_status_code: 422,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", recipient.id);
+                failedThisRun += 1;
+                processed += 1;
+                continue;
+              }
               const trackedContent = await addTracking(
-                personalizedContent,
+                preparedContent.html,
                 campaign.id,
                 recipient.id,
                 url,
