@@ -50,6 +50,20 @@
       "when": 1793402941457,
       "tag": "0006_background_queue_worker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793402966867,
+      "tag": "0007_sync_campaign_tracking_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793402975176,
+      "tag": "0008_sync_campaign_delivery_counts_without_row_limit",
+      "breakpoints": true
     }
   ]
 }
