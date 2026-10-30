@@ -29,6 +29,20 @@
       "when": 1793402870393,
       "tag": "0003_reliable_delivery_statuses",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793402892483,
+      "tag": "0004_media_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793402900598,
+      "tag": "0005_media_asset_owner_index",
+      "breakpoints": true
     }
   ]
 }

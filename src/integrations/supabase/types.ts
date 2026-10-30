@@ -401,6 +401,39 @@ export type Database = {
         }
         Relationships: []
       }
+      media_assets: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          mime_type: string
+          name: string
+          public_url: string
+          size_bytes: number
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          mime_type: string
+          name: string
+          public_url: string
+          size_bytes?: number
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          mime_type?: string
+          name?: string
+          public_url?: string
+          size_bytes?: number
+          storage_path?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active: boolean
