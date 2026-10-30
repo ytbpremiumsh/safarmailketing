@@ -43,6 +43,13 @@
       "when": 1793402900598,
       "tag": "0005_media_asset_owner_index",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793402941457,
+      "tag": "0006_background_queue_worker",
+      "breakpoints": true
     }
   ]
 }

@@ -92,6 +92,7 @@ export type Database = {
           internal_opened_at: string | null
           last_error: string | null
           message_id: string | null
+          next_attempt_at: string | null
           open_count: number
           opened_at: string | null
           provider_click_count: number
@@ -125,6 +126,7 @@ export type Database = {
           internal_opened_at?: string | null
           last_error?: string | null
           message_id?: string | null
+          next_attempt_at?: string | null
           open_count?: number
           opened_at?: string | null
           provider_click_count?: number
@@ -158,6 +160,7 @@ export type Database = {
           internal_opened_at?: string | null
           last_error?: string | null
           message_id?: string | null
+          next_attempt_at?: string | null
           open_count?: number
           opened_at?: string | null
           provider_click_count?: number
@@ -461,6 +464,81 @@ export type Database = {
           id?: string
           role?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      queue_worker_config: {
+        Row: {
+          active: boolean
+          batch_size: number
+          id: boolean
+          last_completed_at: string | null
+          last_error: string | null
+          last_processed: number
+          last_started_at: string | null
+          max_attempts: number
+          secret_hash: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          batch_size?: number
+          id?: boolean
+          last_completed_at?: string | null
+          last_error?: string | null
+          last_processed?: number
+          last_started_at?: string | null
+          max_attempts?: number
+          secret_hash: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          batch_size?: number
+          id?: boolean
+          last_completed_at?: string | null
+          last_error?: string | null
+          last_processed?: number
+          last_started_at?: string | null
+          max_attempts?: number
+          secret_hash?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      queue_worker_runs: {
+        Row: {
+          completed_at: string | null
+          error_message: string | null
+          failed_count: number
+          id: number
+          processed_count: number
+          retry_count: number
+          sent_count: number
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          error_message?: string | null
+          failed_count?: number
+          id?: never
+          processed_count?: number
+          retry_count?: number
+          sent_count?: number
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          error_message?: string | null
+          failed_count?: number
+          id?: never
+          processed_count?: number
+          retry_count?: number
+          sent_count?: number
+          started_at?: string
+          status?: string
         }
         Relationships: []
       }
