@@ -8,6 +8,20 @@
       "when": 1793402815478,
       "tag": "0000_base_schema_rebuild",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793402835007,
+      "tag": "0001_marketing_suite",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793402844165,
+      "tag": "0002_mailketing_webhook_metrics",
+      "breakpoints": true
     }
   ]
 }

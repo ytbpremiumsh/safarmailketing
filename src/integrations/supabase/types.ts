@@ -78,13 +78,25 @@ export type Database = {
         Row: {
           attempts: number
           campaign_id: string
+          click_count: number
           contact_id: string | null
           created_at: string
           email: string
+          first_clicked_at: string | null
           id: string
+          internal_click_count: number
+          internal_first_clicked_at: string | null
+          internal_open_count: number
+          internal_opened_at: string | null
           last_error: string | null
           message_id: string | null
+          open_count: number
+          opened_at: string | null
+          provider_click_count: number
+          provider_first_clicked_at: string | null
           provider_message: string | null
+          provider_open_count: number
+          provider_opened_at: string | null
           queued_at: string | null
           sent_at: string | null
           status: Database["public"]["Enums"]["recipient_status"]
@@ -94,13 +106,25 @@ export type Database = {
         Insert: {
           attempts?: number
           campaign_id: string
+          click_count?: number
           contact_id?: string | null
           created_at?: string
           email: string
+          first_clicked_at?: string | null
           id?: string
+          internal_click_count?: number
+          internal_first_clicked_at?: string | null
+          internal_open_count?: number
+          internal_opened_at?: string | null
           last_error?: string | null
           message_id?: string | null
+          open_count?: number
+          opened_at?: string | null
+          provider_click_count?: number
+          provider_first_clicked_at?: string | null
           provider_message?: string | null
+          provider_open_count?: number
+          provider_opened_at?: string | null
           queued_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["recipient_status"]
@@ -110,13 +134,25 @@ export type Database = {
         Update: {
           attempts?: number
           campaign_id?: string
+          click_count?: number
           contact_id?: string | null
           created_at?: string
           email?: string
+          first_clicked_at?: string | null
           id?: string
+          internal_click_count?: number
+          internal_first_clicked_at?: string | null
+          internal_open_count?: number
+          internal_opened_at?: string | null
           last_error?: string | null
           message_id?: string | null
+          open_count?: number
+          opened_at?: string | null
+          provider_click_count?: number
+          provider_first_clicked_at?: string | null
           provider_message?: string | null
+          provider_open_count?: number
+          provider_opened_at?: string | null
           queued_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["recipient_status"]
@@ -143,6 +179,8 @@ export type Database = {
       campaigns: {
         Row: {
           attachments: Json
+          cancelled_at: string | null
+          clicked_count: number
           completed_at: string | null
           created_at: string
           created_by: string | null
@@ -151,7 +189,10 @@ export type Database = {
           from_name: string | null
           html_content: string
           id: string
+          idempotency_key: string | null
           name: string
+          opened_count: number
+          paused_at: string | null
           scheduled_at: string | null
           sent_count: number
           status: Database["public"]["Enums"]["campaign_status"]
@@ -161,6 +202,8 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
+          cancelled_at?: string | null
+          clicked_count?: number
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -169,7 +212,10 @@ export type Database = {
           from_name?: string | null
           html_content: string
           id?: string
+          idempotency_key?: string | null
           name: string
+          opened_count?: number
+          paused_at?: string | null
           scheduled_at?: string | null
           sent_count?: number
           status?: Database["public"]["Enums"]["campaign_status"]
@@ -179,6 +225,8 @@ export type Database = {
         }
         Update: {
           attachments?: Json
+          cancelled_at?: string | null
+          clicked_count?: number
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -187,7 +235,10 @@ export type Database = {
           from_name?: string | null
           html_content?: string
           id?: string
+          idempotency_key?: string | null
           name?: string
+          opened_count?: number
+          paused_at?: string | null
           scheduled_at?: string | null
           sent_count?: number
           status?: Database["public"]["Enums"]["campaign_status"]
@@ -199,6 +250,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          bounce_count: number
           category: string
           created_at: string
           created_by: string | null
@@ -206,13 +258,17 @@ export type Database = {
           first_name: string | null
           full_name: string | null
           id: string
+          last_engaged_at: string | null
           last_name: string | null
           mobile: string | null
           registration_code: string | null
           source: string | null
+          status: string
+          unsubscribed_at: string | null
           updated_at: string
         }
         Insert: {
+          bounce_count?: number
           category?: string
           created_at?: string
           created_by?: string | null
@@ -220,13 +276,17 @@ export type Database = {
           first_name?: string | null
           full_name?: string | null
           id?: string
+          last_engaged_at?: string | null
           last_name?: string | null
           mobile?: string | null
           registration_code?: string | null
           source?: string | null
+          status?: string
+          unsubscribed_at?: string | null
           updated_at?: string
         }
         Update: {
+          bounce_count?: number
           category?: string
           created_at?: string
           created_by?: string | null
@@ -234,10 +294,94 @@ export type Database = {
           first_name?: string | null
           full_name?: string | null
           id?: string
+          last_engaged_at?: string | null
           last_name?: string | null
           mobile?: string | null
           registration_code?: string | null
           source?: string | null
+          status?: string
+          unsubscribed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_events: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          event_key: string | null
+          event_type: string
+          id: number
+          ip_hash: string | null
+          provider_payload: Json | null
+          recipient_id: string
+          source: string
+          target_url: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          event_key?: string | null
+          event_type: string
+          id?: never
+          ip_hash?: string | null
+          provider_payload?: Json | null
+          recipient_id: string
+          source?: string
+          target_url?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          event_key?: string | null
+          event_type?: string
+          id?: never
+          ip_hash?: string | null
+          provider_payload?: Json | null
+          recipient_id?: string
+          source?: string
+          target_url?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_events_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mailketing_webhook_config: {
+        Row: {
+          active: boolean
+          id: boolean
+          last_event_at: string | null
+          secret_hash: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          id?: boolean
+          last_event_at?: string | null
+          secret_hash: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          id?: boolean
+          last_event_at?: string | null
+          secret_hash?: string
           updated_at?: string
         }
         Relationships: []
@@ -271,6 +415,85 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      suppressions: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          email: string
+          id: string
+          reason: string
+          source: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          id?: string
+          reason?: string
+          source?: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          id?: string
+          reason?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppressions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_versions: {
+        Row: {
+          created_at: string
+          created_by: string
+          html_content: string
+          id: number
+          name: string
+          subject: string
+          template_id: string
+          version_number: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          html_content: string
+          id?: never
+          name: string
+          subject: string
+          template_id: string
+          version_number: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          html_content?: string
+          id?: never
+          name?: string
+          subject?: string
+          template_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       templates: {
         Row: {
