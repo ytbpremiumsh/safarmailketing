@@ -197,6 +197,7 @@ export type Database = {
       campaigns: {
         Row: {
           attachments: Json
+          audience_summary: Json | null
           cancelled_at: string | null
           clicked_count: number
           completed_at: string | null
@@ -220,6 +221,7 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
+          audience_summary?: Json | null
           cancelled_at?: string | null
           clicked_count?: number
           completed_at?: string | null
@@ -243,6 +245,7 @@ export type Database = {
         }
         Update: {
           attachments?: Json
+          audience_summary?: Json | null
           cancelled_at?: string | null
           clicked_count?: number
           completed_at?: string | null
