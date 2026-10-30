@@ -438,7 +438,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Terjadi kesalahan.",
+        message: friendlyError(e, "Terjadi kesalahan."),
       });
     } finally {
       setLoading(false);
@@ -464,7 +464,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
         message: "Tautan pengaturan ulang password telah dikirim ke email.",
       });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Permintaan gagal." });
+      setNotice({ success: false, message: friendlyError(e, "Permintaan gagal.") });
     } finally {
       setLoading(false);
     }
@@ -687,7 +687,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal memuat data.",
+        message: friendlyError(e, "Gagal memuat data."),
       });
     } finally {
       setLoading(false);
@@ -817,7 +817,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       if (!options.silent) {
         setNotice({
           success: false,
-          message: e instanceof Error ? e.message : "Koneksi gagal.",
+          message: friendlyError(e, "Koneksi gagal."),
         });
       }
     } finally {
@@ -1452,7 +1452,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -1657,7 +1657,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Import gagal.",
+        message: friendlyError(e, "Import gagal."),
       });
     } finally {
       setBusy(false);
@@ -1819,7 +1819,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Input massal gagal.",
+        message: friendlyError(e, "Input massal gagal."),
       });
     } finally {
       setBusy(false);
@@ -1847,7 +1847,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Kontak gagal dihapus.",
+        message: friendlyError(e, "Kontak gagal dihapus."),
       });
     } finally {
       setBusy(false);
@@ -1883,7 +1883,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Kategori gagal dihapus.",
+        message: friendlyError(e, "Kategori gagal dihapus."),
       });
     } finally {
       setBusy(false);
@@ -1975,7 +1975,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal memindahkan kontak.",
+        message: friendlyError(e, "Gagal memindahkan kontak."),
       });
     } finally {
       setBusy(false);
@@ -2023,7 +2023,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Status kontak gagal diubah.",
+        message: friendlyError(e, "Status kontak gagal diubah."),
       });
     } finally {
       setBusy(false);
@@ -2837,7 +2837,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menyimpan template.",
+        message: friendlyError(e, "Gagal menyimpan template."),
       });
     } finally {
       setSaving(false);
@@ -2862,7 +2862,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menduplikat template.",
+        message: friendlyError(e, "Gagal menduplikat template."),
       });
     } finally {
       setSaving(false);
@@ -2881,7 +2881,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menghapus template.",
+        message: friendlyError(e, "Gagal menghapus template."),
       });
     }
   };
@@ -2904,7 +2904,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat.",
+        message: friendlyError(e, "Riwayat versi gagal dimuat."),
       });
     }
   };
@@ -3444,7 +3444,7 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -4069,7 +4069,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
       if (!silent) {
         setNotice({
           success: false,
-          message: e instanceof Error ? e.message : "Detail gagal dimuat.",
+          message: friendlyError(e, "Detail gagal dimuat."),
         });
       }
       return false;
@@ -4093,7 +4093,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Aksi kampanye gagal.",
+        message: friendlyError(e, "Aksi kampanye gagal."),
       });
     } finally {
       setBusyId(null);
@@ -4867,7 +4867,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Data admin gagal dimuat.",
+        message: friendlyError(e, "Data admin gagal dimuat."),
       });
     }
   };
@@ -4889,7 +4889,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Pengaturan API gagal dimuat.",
+        message: friendlyError(e, "Pengaturan API gagal dimuat."),
       });
     } finally {
       setSettingsLoaded(true);
@@ -4961,7 +4961,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -4977,7 +4977,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     }
   };
