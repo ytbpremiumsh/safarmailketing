@@ -53,6 +53,20 @@ const headers = (token?: string) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
+
+// Kuota backend proyek terlampaui -> Supabase membalas dengan pesan teknis
+// "Service for this project is restricted ... exceed_cached_egress_quota".
+// Terjemahkan ke pesan ramah sebelum ditampilkan ke pengguna.
+const SERVICE_RESTRICTED_RE =
+  /service for this project is restricted|exceed_cached_egress_quota|exceed.{0,20}quota/i;
+
+export function friendlyError(e: unknown, fallback = "Terjadi kesalahan."): string {
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  if (SERVICE_RESTRICTED_RE.test(raw)) {
+    return "Layanan aplikasi sedang tidak tersedia karena kuota pemakaian telah terlampaui. Silakan coba lagi nanti, atau hubungi admin untuk menaikkan paket layanan.";
+  }
+  return raw || fallback;
+}
 const getCreditBalance = (provider: any): number | undefined => {
   const candidates = [
     provider?.credit_balance,
@@ -424,7 +438,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Terjadi kesalahan.",
+        message: friendlyError(e, "Terjadi kesalahan."),
       });
     } finally {
       setLoading(false);
@@ -450,7 +464,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
         message: "Tautan pengaturan ulang password telah dikirim ke email.",
       });
     } catch (e) {
-      setNotice({ success: false, message: e instanceof Error ? e.message : "Permintaan gagal." });
+      setNotice({ success: false, message: friendlyError(e, "Permintaan gagal.") });
     } finally {
       setLoading(false);
     }
@@ -673,7 +687,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal memuat data.",
+        message: friendlyError(e, "Gagal memuat data."),
       });
     } finally {
       setLoading(false);
@@ -797,13 +811,13 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       setProvider(d);
       if (!options.silent) {
-        setNotice({ success: d.success, message: d.message });
+        setNotice({ success: d.success, message: friendlyError(new Error(String(d.message ?? "")), d.message) });
       }
     } catch (e) {
       if (!options.silent) {
         setNotice({
           success: false,
-          message: e instanceof Error ? e.message : "Koneksi gagal.",
+          message: friendlyError(e, "Koneksi gagal."),
         });
       }
     } finally {
@@ -1438,7 +1452,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -1643,7 +1657,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Import gagal.",
+        message: friendlyError(e, "Import gagal."),
       });
     } finally {
       setBusy(false);
@@ -1805,7 +1819,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Input massal gagal.",
+        message: friendlyError(e, "Input massal gagal."),
       });
     } finally {
       setBusy(false);
@@ -1833,7 +1847,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Kontak gagal dihapus.",
+        message: friendlyError(e, "Kontak gagal dihapus."),
       });
     } finally {
       setBusy(false);
@@ -1869,7 +1883,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Kategori gagal dihapus.",
+        message: friendlyError(e, "Kategori gagal dihapus."),
       });
     } finally {
       setBusy(false);
@@ -1961,7 +1975,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal memindahkan kontak.",
+        message: friendlyError(e, "Gagal memindahkan kontak."),
       });
     } finally {
       setBusy(false);
@@ -2009,7 +2023,7 @@ function Contacts({ contacts: allContacts, provider, token, userId, reload, setN
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Status kontak gagal diubah.",
+        message: friendlyError(e, "Status kontak gagal diubah."),
       });
     } finally {
       setBusy(false);
@@ -2823,7 +2837,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menyimpan template.",
+        message: friendlyError(e, "Gagal menyimpan template."),
       });
     } finally {
       setSaving(false);
@@ -2848,7 +2862,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menduplikat template.",
+        message: friendlyError(e, "Gagal menduplikat template."),
       });
     } finally {
       setSaving(false);
@@ -2867,7 +2881,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal menghapus template.",
+        message: friendlyError(e, "Gagal menghapus template."),
       });
     }
   };
@@ -2890,7 +2904,7 @@ function Templates({ templates, contacts, token, userId, reload, setNotice }: an
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Riwayat versi gagal dimuat.",
+        message: friendlyError(e, "Riwayat versi gagal dimuat."),
       });
     }
   };
@@ -3426,11 +3440,11 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
         await reload();
       }
       if (d.success) await sync({ silent: true });
-      setNotice({ success: d.success, message: d.message });
+      setNotice({ success: d.success, message: friendlyError(new Error(String(d.message ?? "")), d.message) });
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -4055,7 +4069,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
       if (!silent) {
         setNotice({
           success: false,
-          message: e instanceof Error ? e.message : "Detail gagal dimuat.",
+          message: friendlyError(e, "Detail gagal dimuat."),
         });
       }
       return false;
@@ -4079,7 +4093,7 @@ function HistoryView({ campaigns, token, invoke, reload, setNotice }: any) {
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Aksi kampanye gagal.",
+        message: friendlyError(e, "Aksi kampanye gagal."),
       });
     } finally {
       setBusyId(null);
@@ -4853,7 +4867,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Data admin gagal dimuat.",
+        message: friendlyError(e, "Data admin gagal dimuat."),
       });
     }
   };
@@ -4875,7 +4889,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Pengaturan API gagal dimuat.",
+        message: friendlyError(e, "Pengaturan API gagal dimuat."),
       });
     } finally {
       setSettingsLoaded(true);
@@ -4947,7 +4961,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     } finally {
       setBusy(false);
@@ -4963,7 +4977,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
     } catch (e) {
       setNotice({
         success: false,
-        message: e instanceof Error ? e.message : "Gagal.",
+        message: friendlyError(e, "Gagal."),
       });
     }
   };
