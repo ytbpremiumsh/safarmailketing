@@ -291,6 +291,7 @@ export type Database = {
           suppression_reason: string | null
           unsubscribed_at: string | null
           updated_at: string
+          workspace_sender: string
         }
         Insert: {
           bounce_count?: number
@@ -313,6 +314,7 @@ export type Database = {
           suppression_reason?: string | null
           unsubscribed_at?: string | null
           updated_at?: string
+          workspace_sender?: string
         }
         Update: {
           bounce_count?: number
@@ -335,6 +337,7 @@ export type Database = {
           suppression_reason?: string | null
           unsubscribed_at?: string | null
           updated_at?: string
+          workspace_sender?: string
         }
         Relationships: []
       }
