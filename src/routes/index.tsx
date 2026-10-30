@@ -811,7 +811,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       setProvider(d);
       if (!options.silent) {
-        setNotice({ success: d.success, message: d.message });
+        setNotice({ success: d.success, message: friendlyError(new Error(String(d.message ?? "")), d.message) });
       }
     } catch (e) {
       if (!options.silent) {
@@ -3440,7 +3440,7 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
         await reload();
       }
       if (d.success) await sync({ silent: true });
-      setNotice({ success: d.success, message: d.message });
+      setNotice({ success: d.success, message: friendlyError(new Error(String(d.message ?? "")), d.message) });
     } catch (e) {
       setNotice({
         success: false,
