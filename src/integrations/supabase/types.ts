@@ -279,9 +279,13 @@ export type Database = {
           last_engaged_at: string | null
           last_name: string | null
           mobile: string | null
+          previous_category: string | null
           registration_code: string | null
           source: string | null
           status: string
+          suppressed_until: string | null
+          suppression_kind: string | null
+          suppression_reason: string | null
           unsubscribed_at: string | null
           updated_at: string
         }
@@ -297,9 +301,13 @@ export type Database = {
           last_engaged_at?: string | null
           last_name?: string | null
           mobile?: string | null
+          previous_category?: string | null
           registration_code?: string | null
           source?: string | null
           status?: string
+          suppressed_until?: string | null
+          suppression_kind?: string | null
+          suppression_reason?: string | null
           unsubscribed_at?: string | null
           updated_at?: string
         }
@@ -315,9 +323,13 @@ export type Database = {
           last_engaged_at?: string | null
           last_name?: string | null
           mobile?: string | null
+          previous_category?: string | null
           registration_code?: string | null
           source?: string | null
           status?: string
+          suppressed_until?: string | null
+          suppression_kind?: string | null
+          suppression_reason?: string | null
           unsubscribed_at?: string | null
           updated_at?: string
         }
@@ -548,27 +560,36 @@ export type Database = {
           created_at: string
           created_by: string | null
           email: string
+          expires_at: string | null
           id: string
+          kind: string
           reason: string
           source: string
+          updated_at: string
         }
         Insert: {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
           email: string
+          expires_at?: string | null
           id?: string
+          kind?: string
           reason?: string
           source?: string
+          updated_at?: string
         }
         Update: {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string
+          expires_at?: string | null
           id?: string
+          kind?: string
           reason?: string
           source?: string
+          updated_at?: string
         }
         Relationships: [
           {
