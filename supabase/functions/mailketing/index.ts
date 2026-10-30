@@ -339,9 +339,15 @@ export default {
         .eq("id", true)
         .maybeSingle();
       const suppliedHash = await sha256(queueKey);
+      // Kunci worker juga boleh berasal dari secret QUEUE_WORKER_KEY, sehingga
+      // penjadwal terkelola dapat memicu worker tanpa menyimpan hash di DB.
+      const envWorkerKey = Deno.env.get("QUEUE_WORKER_KEY") ?? "";
+      const keyMatchesEnv =
+        envWorkerKey.length >= 16 && safeEqual(queueKey, envWorkerKey);
       if (
         !config?.active ||
-        !safeEqual(suppliedHash, String(config?.secret_hash ?? ""))
+        (!keyMatchesEnv &&
+          !safeEqual(suppliedHash, String(config?.secret_hash ?? "")))
       ) {
         return json({ success: false, message: "Kunci worker tidak valid." }, 401);
       }
