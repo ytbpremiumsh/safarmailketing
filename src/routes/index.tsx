@@ -47,8 +47,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 // Backend Lovable Cloud — diambil dari env yang dibuat otomatis, jangan hardcode.
-const SB_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SB_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+const SB_URL = import.meta.env["VITE_SUPABASE_URL"] as string;
+const SB_KEY = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] as string;
 const headers = (token?: string) => ({
   apikey: SB_KEY,
   "Content-Type": "application/json",
