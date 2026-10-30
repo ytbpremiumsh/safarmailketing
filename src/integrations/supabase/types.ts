@@ -77,10 +77,12 @@ export type Database = {
       campaign_recipients: {
         Row: {
           attempts: number
+          bounced_at: string | null
           campaign_id: string
           click_count: number
           contact_id: string | null
           created_at: string
+          delivered_at: string | null
           email: string
           first_clicked_at: string | null
           id: string
@@ -97,7 +99,10 @@ export type Database = {
           provider_message: string | null
           provider_open_count: number
           provider_opened_at: string | null
+          provider_response: Json | null
+          provider_status_code: number | null
           queued_at: string | null
+          rejected_at: string | null
           sent_at: string | null
           status: Database["public"]["Enums"]["recipient_status"]
           updated_at: string
@@ -105,10 +110,12 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          bounced_at?: string | null
           campaign_id: string
           click_count?: number
           contact_id?: string | null
           created_at?: string
+          delivered_at?: string | null
           email: string
           first_clicked_at?: string | null
           id?: string
@@ -125,7 +132,10 @@ export type Database = {
           provider_message?: string | null
           provider_open_count?: number
           provider_opened_at?: string | null
+          provider_response?: Json | null
+          provider_status_code?: number | null
           queued_at?: string | null
+          rejected_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["recipient_status"]
           updated_at?: string
@@ -133,10 +143,12 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          bounced_at?: string | null
           campaign_id?: string
           click_count?: number
           contact_id?: string | null
           created_at?: string
+          delivered_at?: string | null
           email?: string
           first_clicked_at?: string | null
           id?: string
@@ -153,7 +165,10 @@ export type Database = {
           provider_message?: string | null
           provider_open_count?: number
           provider_opened_at?: string | null
+          provider_response?: Json | null
+          provider_status_code?: number | null
           queued_at?: string | null
+          rejected_at?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["recipient_status"]
           updated_at?: string
