@@ -14,7 +14,7 @@ export const Route = createFileRoute('/api/public/jobs/process-queue')({
         const body = (await request.json().catch(() => ({}))) as {
           background?: boolean
         }
-        const queueKey = process.env.QUEUE_WORKER_KEY
+        const queueKey = process.env['QUEUE_WORKER_KEY']
         if (!queueKey) {
           return Response.json(
             { success: false, message: 'Kunci worker belum dikonfigurasi.' },
@@ -23,7 +23,7 @@ export const Route = createFileRoute('/api/public/jobs/process-queue')({
         }
 
         const supabaseUrl =
-          process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL
+          process.env['SUPABASE_URL'] ?? import.meta.env['VITE_SUPABASE_URL']
         const edgeResponse = await fetch(
           `${supabaseUrl}/functions/v1/mailketing`,
           {
