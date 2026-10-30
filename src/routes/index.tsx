@@ -53,6 +53,20 @@ const headers = (token?: string) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
+
+// Kuota backend proyek terlampaui -> Supabase membalas dengan pesan teknis
+// "Service for this project is restricted ... exceed_cached_egress_quota".
+// Terjemahkan ke pesan ramah sebelum ditampilkan ke pengguna.
+const SERVICE_RESTRICTED_RE =
+  /service for this project is restricted|exceed_cached_egress_quota|exceed.{0,20}quota/i;
+
+export function friendlyError(e: unknown, fallback = "Terjadi kesalahan."): string {
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  if (SERVICE_RESTRICTED_RE.test(raw)) {
+    return "Layanan aplikasi sedang tidak tersedia karena kuota pemakaian telah terlampaui. Silakan coba lagi nanti, atau hubungi admin untuk menaikkan paket layanan.";
+  }
+  return raw || fallback;
+}
 const getCreditBalance = (provider: any): number | undefined => {
   const candidates = [
     provider?.credit_balance,
