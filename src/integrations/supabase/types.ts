@@ -659,6 +659,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_daily_email_stats: {
+        Args: { p_days?: number }
+        Returns: {
+          bounced: number
+          clicked: number
+          day: string
+          delivered: number
+          failed: number
+          opened: number
+          rejected: number
+          sent: number
+        }[]
+      }
       read_mailketing_token: { Args: never; Returns: string }
       store_mailketing_token: {
         Args: { p_token: string; p_user_id: string }

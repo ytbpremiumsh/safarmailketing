@@ -64,6 +64,13 @@
       "when": 1793402975176,
       "tag": "0008_sync_campaign_delivery_counts_without_row_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793402990371,
+      "tag": "0009_daily_email_stats",
+      "breakpoints": true
     }
   ]
 }
