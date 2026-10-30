@@ -1,0 +1,132 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793402815478,
+      "tag": "0000_base_schema_rebuild",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793402835007,
+      "tag": "0001_marketing_suite",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793402844165,
+      "tag": "0002_mailketing_webhook_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793402870393,
+      "tag": "0003_reliable_delivery_statuses",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793402892483,
+      "tag": "0004_media_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793402900598,
+      "tag": "0005_media_asset_owner_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793402941457,
+      "tag": "0006_background_queue_worker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793402966867,
+      "tag": "0007_sync_campaign_tracking_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793402975176,
+      "tag": "0008_sync_campaign_delivery_counts_without_row_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793402990371,
+      "tag": "0009_daily_email_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793403027668,
+      "tag": "0010_enable_pg_cron",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793403043222,
+      "tag": "0011_automatic_bounce_suppression_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793403060164,
+      "tag": "0012_campaign_audience_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793403106202,
+      "tag": "0013_contact_workspace_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793403132911,
+      "tag": "0014_backfill_campaign_audience_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793403143441,
+      "tag": "0015_optimize_campaign_dashboard_queries",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793403160154,
+      "tag": "0016_optimize_daily_email_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793403195448,
+      "tag": "0017_seed_queue_and_webhook_config",
+      "breakpoints": true
+    }
+  ]
+}

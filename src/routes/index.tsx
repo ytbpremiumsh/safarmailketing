@@ -46,8 +46,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
-const SB_URL = "https://tbfndctalcrsebgocoto.supabase.co";
-const SB_KEY = "sb_publishable_ug0zaXKB6aW4A37vICRzCw_cj8X-XjI";
+// Backend Lovable Cloud — diambil dari env yang dibuat otomatis, jangan hardcode.
+const SB_URL = import.meta.env["VITE_SUPABASE_URL"] as string;
+const SB_KEY = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] as string;
 const headers = (token?: string) => ({
   apikey: SB_KEY,
   "Content-Type": "application/json",

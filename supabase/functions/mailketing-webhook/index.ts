@@ -59,7 +59,16 @@ export default {
       .eq("id", true)
       .maybeSingle();
     const suppliedHash = suppliedSecret ? await sha256(suppliedSecret) : "";
-    if (!config?.active || !safeEqual(suppliedHash, String(config?.secret_hash ?? "")))
+    // Kunci webhook juga boleh berasal dari secret MAILKETING_WEBHOOK_KEY,
+    // sehingga pengguna cukup menempel kunci yang sama di dasbor Mailketing.
+    const envWebhookKey = Deno.env.get("MAILKETING_WEBHOOK_KEY") ?? "";
+    const keyMatchesEnv =
+      envWebhookKey.length >= 16 && safeEqual(suppliedSecret, envWebhookKey);
+    if (
+      !config?.active ||
+      (!keyMatchesEnv &&
+        !safeEqual(suppliedHash, String(config?.secret_hash ?? "")))
+    )
       return json({ success: false, message: "Invalid webhook key" }, 401);
 
     const payload = await request.json().catch(() => null);
