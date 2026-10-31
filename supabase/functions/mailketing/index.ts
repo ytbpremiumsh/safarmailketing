@@ -1,3 +1,4 @@
+import { extractCreditBalance } from "../_shared/mailketing-credit.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const MAILKETING_URL = "https://stackapi.mailketing.co.id/api/v2";
@@ -253,25 +254,6 @@ const requestMailketingV1Credits = async (token: string) => {
     http_status: response.status,
     transport: "mailketing-v1",
   };
-};
-
-const extractCreditBalance = (payload: any): number | null => {
-  const candidates = [
-    payload?.data?.credits,
-    payload?.data?.credit,
-    payload?.credits,
-    payload?.credit,
-    payload?.saldo,
-    payload?.data?.saldo,
-  ];
-  const raw = candidates.find(
-    (value) => value !== undefined && value !== null && value !== "",
-  );
-  if (raw === undefined) return null;
-  const normalized =
-    typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const extractVerifiedSenders = (payload: any): string[] => {
@@ -536,7 +518,7 @@ export default {
       }
 
       const { data: token, error: tokenError } = await admin.rpc("read_mailketing_token");
-      if (tokenError || !token) return json({ success: false, message: "Token Mailketing belum dikonfigurasi." }, 422);
+      if (tokenError || !token) return json({ success: false, code: "MAILKETING_TOKEN_MISSING", token_configured: false, credit_balance: null, message: "Token Mailketing belum dikonfigurasi di Cloud. Minta admin memasukkan token di Pengaturan API, lalu sinkronkan kembali." }, 422);
       const provider = (path: string, body?: unknown, corporate = false) =>
         requestMailketing(normalizeToken(token), path, body, corporate);
       const safeProvider = (
@@ -716,8 +698,9 @@ export default {
           extractCreditBalance(officialCreditCheck) !== null
             ? officialCreditCheck
             : await safeProvider("/credits");
-        const credits = extractCreditBalance(creditCheck) ?? 0;
-        if (creditCheck.success !== false && recipients.length > credits) {
+        const credits = extractCreditBalance(creditCheck);
+        if (credits === null) return json({ success: false, code: "CREDIT_CHECK_UNAVAILABLE", message: "Saldo Mailketing belum dapat diverifikasi. Kampanye belum dibuat; coba sinkronkan saldo kembali." }, 503);
+        if (recipients.length > credits) {
           return json({ success: false, code: "INSUFFICIENT_CREDITS", message: `Kredit tidak cukup. Dibutuhkan ${recipients.length}, tersedia ${credits}.` }, 422);
         }
         const status = campaign.scheduled_at ? "scheduled" : "processing";

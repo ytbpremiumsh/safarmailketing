@@ -31,11 +31,14 @@ function ResetPassword() {
   useEffect(() => {
     let cancelled = false;
     const credentials = recoveryCredentials(window.location.hash);
+    const code = new URLSearchParams(window.location.search).get("code");
     window.history.replaceState(null, "", window.location.pathname);
     const verify = async () => {
       try {
-        if (!credentials) throw new Error("invalid recovery");
-        const { error: sessionError } = await supabase.auth.setSession(credentials);
+        if (!credentials && !code) throw new Error("invalid recovery");
+        const { error: sessionError } = code
+          ? await supabase.auth.exchangeCodeForSession(code)
+          : await supabase.auth.setSession(credentials!);
         if (sessionError) throw sessionError;
         const { data, error: userError } = await supabase.auth.getUser();
         if (userError || !data.user) throw new Error("invalid recovery");
