@@ -426,6 +426,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          delivery_token: string | null
           id: string
           mime_type: string
           name: string
@@ -436,6 +437,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          delivery_token?: string | null
           id?: string
           mime_type: string
           name: string
@@ -446,6 +448,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          delivery_token?: string | null
           id?: string
           mime_type?: string
           name?: string
@@ -681,6 +684,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          role: string
+          user_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          role?: string
+          user_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          role?: string
+          user_id?: string
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -699,7 +726,12 @@ export type Database = {
           sent: number
         }[]
       }
+      has_role: { Args: { _role: string; _user_id: string }; Returns: boolean }
       read_mailketing_token: { Args: never; Returns: string }
+      set_safar_staff_role: {
+        Args: { p_actor: string; p_role: string; p_user_id: string }
+        Returns: undefined
+      }
       store_mailketing_token: {
         Args: { p_token: string; p_user_id: string }
         Returns: undefined

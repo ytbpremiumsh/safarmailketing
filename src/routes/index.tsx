@@ -45,6 +45,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { compressUpload, IMMUTABLE_CACHE_SECONDS } from "@/lib/media-upload";
 
 // Backend Lovable Cloud — diambil dari env yang dibuat otomatis, jangan hardcode.
 const SB_URL = import.meta.env["VITE_SUPABASE_URL"] as string;
@@ -193,6 +194,10 @@ export const Route = createFileRoute("/")({
         name: "description",
         content: "Dashboard email marketing Mailketing untuk Safar Iman.",
       },
+      { property: "og:title", content: "Safar Mail — Email Marketing" },
+      { property: "og:description", content: "Kelola kontak, template, dan kampanye email Safar Iman." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: App,
@@ -674,14 +679,20 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
   const load = async () => {
     setLoading(true);
     try {
-      const [p, c, t, h] = await Promise.all([
-        api(`/rest/v1/profiles?id=eq.${session.user.id}&select=*`, token),
+      const [p, roles] = await Promise.all([
+        api(`/rest/v1/profiles?id=eq.${session.user.id}&select=id,email,full_name,active`, token),
+        api(`/rest/v1/user_roles?user_id=eq.${session.user.id}&select=role,verified_at`, token),
+      ]);
+      const account = p[0];
+      const role = roles[0];
+      setProfile(account ? { ...account, role: role?.role === "admin" && role?.verified_at ? "admin" : "operator" } : null);
+      setProfileLoaded(true);
+      if (!account?.active || !role) return;
+      const [c, t, h] = await Promise.all([
         apiAll("/rest/v1/contacts?select=*&order=created_at.desc,id.asc", token),
         api("/rest/v1/templates?select=*&order=updated_at.desc", token),
         api("/rest/v1/campaigns?select=*&order=created_at.desc&limit=100", token),
       ]);
-      setProfile(p[0] ?? null);
-      setProfileLoaded(true);
       setContacts(c);
       setTemplates(t);
       setCampaigns(h);
@@ -4508,7 +4519,7 @@ function MediaView({
     setLoading(true);
     try {
       const rows = await api(
-        "/rest/v1/media_assets?select=*&order=created_at.desc&limit=1000",
+        "/rest/v1/media_assets?select=id,name,storage_path,public_url,mime_type,size_bytes,created_at,created_by&order=created_at.desc&limit=1000",
         token,
       );
       setAssets(Array.isArray(rows) ? rows : []);
@@ -4550,6 +4561,8 @@ function MediaView({
     let uploaded = 0;
     try {
       for (const file of files) {
+        const upload = await compressUpload(file);
+        const deliveryToken = crypto.randomUUID();
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-") || "media";
         const path =
           userId + "/" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + "-" + safeName;
@@ -4559,17 +4572,18 @@ function MediaView({
           headers: {
             apikey: SB_KEY,
             Authorization: "Bearer " + token,
-            "Content-Type": file.type,
+            "Content-Type": upload.type,
             "x-upsert": "false",
+            "cache-control": String(IMMUTABLE_CACHE_SECONDS),
           },
-          body: file,
+          body: upload,
         });
         if (!uploadResponse.ok) {
           const body = await uploadResponse.json().catch(() => ({}));
           throw new Error(body.message || body.error || "Upload " + file.name + " gagal.");
         }
 
-        const publicUrl = SB_URL + "/storage/v1/object/public/media/" + encodedPath;
+        const publicUrl = window.location.origin + "/api/public/media/" + deliveryToken;
         try {
           await api("/rest/v1/media_assets", token, {
             method: "POST",
@@ -4578,8 +4592,9 @@ function MediaView({
               name: file.name,
               storage_path: path,
               public_url: publicUrl,
-              mime_type: file.type,
-              size_bytes: file.size,
+              delivery_token: deliveryToken,
+              mime_type: upload.type,
+              size_bytes: upload.size,
               created_by: userId,
             }),
           });
@@ -4765,6 +4780,7 @@ function MediaView({
                         src={asset.public_url}
                         alt={asset.name}
                         loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-contain"
                       />
                     ) : (

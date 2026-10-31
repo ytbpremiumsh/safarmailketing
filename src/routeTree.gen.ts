@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicJobsProcessQueueRouteImport } from './routes/api/public/jobs/process-queue'
+import { Route as ApiPublicMediaTokenRouteImport } from './routes/api/public/media/$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,31 +24,44 @@ const ApiPublicJobsProcessQueueRoute =
     path: '/api/public/jobs/process-queue',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicMediaTokenRoute = ApiPublicMediaTokenRouteImport.update({
+  id: '/api/public/media/$token',
+  path: '/api/public/media/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/jobs/process-queue': typeof ApiPublicJobsProcessQueueRoute
+  '/api/public/media/$token': typeof ApiPublicMediaTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/jobs/process-queue': typeof ApiPublicJobsProcessQueueRoute
+  '/api/public/media/$token': typeof ApiPublicMediaTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/jobs/process-queue': typeof ApiPublicJobsProcessQueueRoute
+  '/api/public/media/$token': typeof ApiPublicMediaTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/jobs/process-queue'
+  fullPaths: '/' | '/api/public/jobs/process-queue' | '/api/public/media/$token'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/jobs/process-queue'
-  id: '__root__' | '/' | '/api/public/jobs/process-queue'
+  to: '/' | '/api/public/jobs/process-queue' | '/api/public/media/$token'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/jobs/process-queue'
+    | '/api/public/media/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicJobsProcessQueueRoute: typeof ApiPublicJobsProcessQueueRoute
+  ApiPublicMediaTokenRoute: typeof ApiPublicMediaTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -66,12 +80,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsProcessQueueRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/media/$token': {
+      id: '/api/public/media/$token'
+      path: '/api/public/media/$token'
+      fullPath: '/api/public/media/$token'
+      preLoaderRoute: typeof ApiPublicMediaTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicJobsProcessQueueRoute: ApiPublicJobsProcessQueueRoute,
+  ApiPublicMediaTokenRoute: ApiPublicMediaTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

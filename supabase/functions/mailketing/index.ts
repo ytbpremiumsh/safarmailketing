@@ -318,7 +318,8 @@ const classifyBounce = (reasonValue: unknown): {
 export default {
   fetch: async (request: Request) => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
-    const url = Deno.env.get("SUPABASE_URL")!;
+    const url = Deno.env.get("SUPABASE_URL");
+    if (!url) return json({ success: false, message: "Konfigurasi layanan belum tersedia." }, 503);
     const secretMap = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
     const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? secretMap.default;
     const admin = createClient(url, secret, {
@@ -376,7 +377,11 @@ export default {
         .select("role,active")
         .eq("id", userId)
         .single();
-      profile = userProfile;
+      const { data: userRole } = await admin.from("user_roles")
+        .select("role,verified_at").eq("user_id", userId).maybeSingle();
+      profile = userProfile && userRole
+        ? { active: userProfile.active, role: userRole.role === "admin" && userRole.verified_at ? "admin" : "operator" }
+        : null;
       if (!profile?.active)
         return json({ success: false, message: "Akun tidak aktif." }, 403);
     }
@@ -481,7 +486,12 @@ export default {
       if (action === "list-users") {
         const { data, error } = await admin.from("profiles").select("*").order("created_at");
         if (error) return json({ success: false, message: error.message }, 400);
-        return json({ success: true, users: data ?? [] });
+        const { data: roles, error: rolesError } = await admin.from("user_roles").select("user_id,role,verified_at");
+        if (rolesError) return json({ success: false, message: "Hak akses gagal dimuat." }, 500);
+        return json({ success: true, users: (data ?? []).map((user) => {
+          const role = roles?.find((row) => row.user_id === user.id);
+          return { ...user, role: role?.role === "admin" && role.verified_at ? "admin" : "operator" };
+        }) });
       }
       if (action === "create-user") {
         const email = String(input.email ?? "").trim().toLowerCase();
@@ -495,7 +505,7 @@ export default {
           user_metadata: { full_name: String(input.full_name ?? "") },
         });
         if (error || !data.user) return json({ success: false, message: error?.message ?? "Akun gagal dibuat." }, 400);
-        await admin.from("profiles").upsert({
+        const { error: profileError } = await admin.from("profiles").upsert({
           id: data.user.id,
           email,
           full_name: String(input.full_name ?? "") || null,
@@ -503,6 +513,9 @@ export default {
           active: input.active !== false,
           updated_at: new Date().toISOString(),
         });
+        if (profileError) return json({ success: false, message: "Profil gagal disimpan." }, 500);
+        const { error: roleError } = await admin.rpc("set_safar_staff_role", { p_user_id: data.user.id, p_role: input.role === "admin" ? "admin" : "operator", p_actor: userId });
+        if (roleError) return json({ success: false, message: "Hak akses gagal disimpan." }, 500);
         await admin.from("audit_logs").insert({ user_id: userId, action: "user.created", entity_type: "profile", entity_id: data.user.id, metadata: { email, role: input.role } });
         return json({ success: true, message: "Akun pengguna berhasil dibuat." });
       }
@@ -514,6 +527,8 @@ export default {
           active: Boolean(input.active),
           updated_at: new Date().toISOString(),
         };
+        const { error: roleError } = await admin.rpc("set_safar_staff_role", { p_user_id: input.user_id, p_role: updates.role, p_actor: userId });
+        if (roleError) return json({ success: false, message: "Hak akses gagal disimpan." }, 500);
         const { error } = await admin.from("profiles").update(updates).eq("id", input.user_id);
         if (error) return json({ success: false, message: error.message }, 400);
         await admin.from("audit_logs").insert({ user_id: userId, action: "user.updated", entity_type: "profile", entity_id: input.user_id, metadata: updates });
