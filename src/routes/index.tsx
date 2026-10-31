@@ -46,6 +46,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { compressUpload, IMMUTABLE_CACHE_SECONDS } from "@/lib/media-upload";
+import { canSubmitCredentials, normalizeLoginEmail } from "@/lib/auth-input";
+import { supabase } from "@/integrations/supabase/client";
 
 // Backend Lovable Cloud — diambil dari env yang dibuat otomatis, jangan hardcode.
 const SB_URL = import.meta.env["VITE_SUPABASE_URL"] as string;
@@ -67,6 +69,8 @@ export function friendlyError(e: unknown, fallback = "Terjadi kesalahan."): stri
   if (SERVICE_RESTRICTED_RE.test(raw)) {
     return "Layanan aplikasi sedang tidak tersedia karena kuota pemakaian telah terlampaui. Silakan coba lagi nanti, atau hubungi admin untuk menaikkan paket layanan.";
   }
+  if (/invalid login credentials|invalid_credentials/i.test(raw)) return "Email atau password tidak cocok. Periksa kembali, atau gunakan Lupa password.";
+  if (/email not confirmed/i.test(raw)) return "Email belum dikonfirmasi. Periksa tautan konfirmasi di email Anda.";
   return raw || fallback;
 }
 const getCreditBalance = (provider: any): number | undefined => {
@@ -364,6 +368,10 @@ function App() {
 
   useEffect(() => {
     const restore = async () => {
+      if (new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") {
+        window.location.replace(`/reset-password${window.location.hash}`);
+        return;
+      }
       const raw = localStorage.getItem("safar-session");
       if (!raw) {
         setReady(true);
@@ -419,6 +427,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     [loading, setLoading] = useState(false),
     [notice, setNotice] = useState<Notice | null>(null);
   const submit = async () => {
+    if (loading || !canSubmitCredentials(email, password, mode === "register")) return;
     setLoading(true);
     setNotice(null);
     try {
@@ -427,7 +436,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
         method: "POST",
         headers: headers(),
         body: JSON.stringify(
-          mode === "login" ? { email, password } : { email, password, data: { full_name: name } },
+          mode === "login" ? { email: normalizeLoginEmail(email), password } : { email: normalizeLoginEmail(email), password, data: { full_name: name } },
         ),
       });
       const data = await res.json();
@@ -452,25 +461,23 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
   };
 
   const recoverPassword = async () => {
-    if (!email) {
+    if (loading) return;
+    if (!canSubmitCredentials(email, "placeholder")) {
       setNotice({ success: false, message: "Masukkan email terlebih dahulu." });
       return;
     }
     setLoading(true);
     try {
-      const response = await fetch(`${SB_URL}/auth/v1/recover`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ email }),
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizeLoginEmail(email), {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || "Permintaan gagal.");
+      if (error) throw error;
       setNotice({
         success: true,
-        message: "Tautan pengaturan ulang password telah dikirim ke email.",
+        message: "Jika email terdaftar, tautan pengaturan ulang password akan dikirim. Periksa juga folder spam.",
       });
     } catch (e) {
-      setNotice({ success: false, message: friendlyError(e, "Permintaan gagal.") });
+      setNotice({ success: false, message: "Permintaan pemulihan belum berhasil. Tunggu sebentar lalu coba lagi." });
     } finally {
       setLoading(false);
     }
@@ -585,7 +592,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && password.length >= 8) void submit();
+                        if (event.key === "Enter") void submit();
                       }}
                       placeholder="contoh: admin@email.com"
                       autoComplete="email"
@@ -606,10 +613,10 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && email && password.length >= 8) void submit();
+                        if (event.key === "Enter") void submit();
                       }}
-                      placeholder="Masukkan password minimal 8 karakter"
-                      minLength={8}
+                      placeholder="Masukkan password"
+                      minLength={mode === "register" ? 8 : 1}
                       autoComplete="current-password"
                       className="h-12 rounded-xl border-slate-200 bg-slate-50/70 pl-11 pr-12 transition focus:bg-white"
                     />
@@ -626,18 +633,19 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                 </Field>
 
                 <div className="flex items-center justify-end">
-                  <button
+                  <Button
                     type="button"
-                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-800 hover:underline"
+                    variant="link"
+                    disabled={loading}
                     onClick={recoverPassword}
                   >
                     Lupa password?
-                  </button>
+                  </Button>
                 </div>
 
                 <Button
                   className="h-12 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 font-semibold shadow-lg shadow-emerald-200 transition hover:from-emerald-700 hover:to-teal-800"
-                  disabled={loading || !email || password.length < 8}
+                  disabled={loading || !canSubmitCredentials(email, password, mode === "register")}
                   onClick={submit}
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <KeyRound />}
