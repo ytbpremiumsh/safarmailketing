@@ -127,6 +127,13 @@
       "when": 1793403195448,
       "tag": "0017_seed_queue_and_webhook_config",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793405321765,
+      "tag": "0018_verified_roles_no_automatic_admin",
+      "breakpoints": true
     }
   ]
 }
