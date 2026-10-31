@@ -1,5 +1,11 @@
 # Roadmap
 
+## Pemulihan login dan keamanan — 31 Oktober 2026
+- [x] Lengkapi halaman pengaturan ulang password dan pesan login; 7 tes lulus, login salah dan tautan tidak valid diuji di browser, build OK.
+- [ ] Uji pemulihan lengkap dan login owner: menunggu alamat email owner dan verifikasi kepemilikan; tidak mengirim email pemulihan ke akun uji tanpa izin.
+- [ ] Verifikasi email owner melalui mekanisme aman sebelum aktivasi/admin; akun uji tidak boleh otomatis diaktifkan.
+- [ ] Tindak lanjuti 6 temuan keamanan pengiriman email, tautan tracking dan pembatasan kolom kampanye; pemeriksaan selesai, perbaikan belum diterapkan, jangan klaim keamanan menyeluruh.
+
 ## Kelanjutan migrasi aman — 30 Oktober 2026
 - [x] Periksa state terbaru tanpa menimpa perubahan: commit f6f22bd, skema Cloud terpasang, koneksi memakai env, data bisnis kosong.
 - [ ] Hapus perilaku first-signup auto-admin; pisahkan peran dari profiles dan verifikasi owner sebelum bootstrap admin.

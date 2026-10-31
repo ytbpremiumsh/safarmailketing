@@ -10,6 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Decisions
+- Password recovery uses a dedicated public `/reset-password` route that validates a recovery link and Auth user before updating a password; it never activates profiles or grants roles. Why: restoring credentials must not bypass staff authorization.
 - Worker antrean email diautentikasi lewat secret `QUEUE_WORKER_KEY` (env) selain hash `queue_worker_config.secret_hash`; jadwal terkelola memanggil `/api/public/jobs/process-queue` tiap menit, yang meneruskan ke edge function `mailketing`. Why: penjadwal terkelola memakai bearer cron sendiri dan kunci worker tidak boleh disimpan plaintext di chat/DB.
 - Webhook Mailketing diautentikasi lewat secret `MAILKETING_WEBHOOK_KEY` (env) selain hash `mailketing_webhook_config.secret_hash`; nilainya juga ditempel pengguna di dasbor Mailketing.
 - Bucket storage `media` dibuat privat karena kebijakan workspace memblokir bucket publik; fungsi `private.is_active_user()` dan `private.is_admin()` dipakai untuk kebijakan media.
