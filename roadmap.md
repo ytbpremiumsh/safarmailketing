@@ -1,5 +1,10 @@
 # Roadmap
 
+## Pemulihan 13 file asli — 31 Oktober 2026
+- [ ] Salin 13 file ke media privat melalui Storage API terkelola dan cocokkan ukuran/hash.
+- [ ] Pertahankan ID/metadata dan owner mapped; perbarui tautan HTML/lampiran hanya setelah verifikasi file.
+- [ ] Verifikasi 13 objek, tautan per-file, worker tetap mati; jangan impor ulang tabel atau publish.
+
 ## Pemulihan login dan keamanan — 31 Oktober 2026
 - [x] Lengkapi halaman pengaturan ulang password dan pesan login; 7 tes lulus, login salah dan tautan tidak valid diuji di browser, build OK.
 - [ ] Uji pemulihan lengkap dan login owner: menunggu alamat email owner dan verifikasi kepemilikan; tidak mengirim email pemulihan ke akun uji tanpa izin.
