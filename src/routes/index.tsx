@@ -431,7 +431,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     setLoading(true);
     setNotice(null);
     try {
-      const endpoint = mode === "login" ? "/auth/v1/token?grant_type=password" : "/auth/v1/signup";
+      const endpoint = mode === "login" ? "/auth/v1/token?grant_type=password" : `/auth/v1/signup?redirect_to=${encodeURIComponent(window.location.origin)}`;
       const res = await fetch(`${SB_URL}${endpoint}`, {
         method: "POST",
         headers: headers(),
@@ -445,7 +445,7 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
       if (!data.access_token) {
         setNotice({
           success: true,
-          message: "Pendaftaran diterima. Periksa email jika konfirmasi diwajibkan.",
+          message: "Pendaftaran diterima. Konfirmasikan email Anda melalui tautan yang dikirim. Akses data tetap menunggu aktivasi administrator.",
         });
         return;
       }
@@ -558,10 +558,10 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                 </span>
                 <div>
                   <CardTitle className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                    Selamat datang kembali
+                    {mode === "login" ? "Selamat datang kembali" : "Daftar akun Safar Mail"}
                   </CardTitle>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Masuk menggunakan akun admin untuk mengelola Safar Mail.
+                    {mode === "login" ? "Masuk menggunakan akun admin untuk mengelola Safar Mail." : "Konfirmasikan email Anda; akses data memerlukan persetujuan administrator."}
                   </p>
                 </div>
               </CardHeader>
@@ -649,8 +649,14 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
                   onClick={submit}
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <KeyRound />}
-                  {loading ? "Memverifikasi..." : "Masuk ke Dashboard"}
+                  {loading ? "Memverifikasi..." : mode === "login" ? "Masuk ke Dashboard" : "Daftar akun"}
                 </Button>
+
+                <Button variant="link" className="w-full" disabled={loading} onClick={() => {
+                  setMode(mode === "login" ? "register" : "login");
+                  setPassword("");
+                  setNotice(null);
+                }}>{mode === "login" ? "Belum punya akun? Daftar" : "Sudah punya akun? Masuk"}</Button>
 
                 <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs leading-5 text-slate-500">
                   <ShieldCheck size={17} className="mt-0.5 shrink-0 text-emerald-600" />
