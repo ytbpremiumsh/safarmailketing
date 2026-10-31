@@ -1,3 +1,6 @@
+import { restoreCloudSession } from "@/lib/auth-session";
+import type { Session as SupabaseSession } from "@supabase/supabase-js";
+import { getCreditBalance } from "../../supabase/functions/_shared/mailketing-credit.ts";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -73,23 +76,6 @@ export function friendlyError(e: unknown, fallback = "Terjadi kesalahan."): stri
   if (/email not confirmed/i.test(raw)) return "Email belum dikonfirmasi. Periksa tautan konfirmasi di email Anda.";
   return raw || fallback;
 }
-const getCreditBalance = (provider: any): number | undefined => {
-  const candidates = [
-    provider?.credit_balance,
-    provider?.credits?.data?.credits,
-    provider?.credits?.data?.credit,
-    provider?.credits?.credits,
-    provider?.credits?.credit,
-    provider?.credits?.saldo,
-    provider?.credits?.data?.saldo,
-  ];
-  const raw = candidates.find((value) => value !== undefined && value !== null && value !== "");
-  if (raw === undefined) return undefined;
-  const normalized = typeof raw === "string" ? raw.replace(/[^\d.-]/g, "") : raw;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : undefined;
-};
-
 const getVerifiedSenders = (provider: any): string[] => {
   const preferred = provider?.verified_senders;
   const source = Array.isArray(preferred) && preferred.length ? preferred : provider?.senders;
@@ -288,134 +274,66 @@ async function apiAll(path: string, token: string, pageSize = 1000) {
   return allRows;
 }
 
+function fromAuthSession(value: SupabaseSession | null): Session | null {
+  return value ? { ...value, user: { id: value.user.id, email: value.user.email ?? "" } } : null;
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const refreshPromise = useRef<Promise<Session | null> | null>(null);
-
   const saveSession = useCallback((next: Session | null) => {
     currentAccessToken = next?.access_token ?? null;
-    if (next) localStorage.setItem("safar-session", JSON.stringify(next));
-    else localStorage.removeItem("safar-session");
     setSession(next);
   }, []);
 
-  const refreshSession = useCallback(async (): Promise<string | null> => {
-    if (!session?.refresh_token) return null;
-    if (!refreshPromise.current) {
-      const current = session;
-      refreshPromise.current = (async () => {
-        try {
-          const response = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
-            method: "POST",
-            headers: headers(),
-            body: JSON.stringify({ refresh_token: current.refresh_token }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            const invalidRefresh =
-              response.status >= 400 &&
-              response.status < 500 &&
-              /refresh token|invalid.*token|session.*expired/i.test(
-                String(data?.message ?? data?.msg ?? data?.error_description ?? ""),
-              );
-            if (invalidRefresh) saveSession(null);
-            return null;
-          }
-          const fresh: Session = {
-            ...current,
-            ...data,
-            user: data.user ?? current.user,
-            refresh_token: data.refresh_token ?? current.refresh_token,
-          };
-          saveSession(fresh);
-          return fresh;
-        } catch {
-          // Gangguan jaringan tidak menghapus sesi; percobaan berikutnya akan mengulang.
-          return null;
-        } finally {
-          refreshPromise.current = null;
-        }
-      })();
+  useEffect(() => {
+    // Preserve the recovery proof before the SDK consumes the fragment.
+    if (new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") {
+      window.location.replace(`/reset-password${window.location.hash}`);
+      return;
     }
-    const fresh = await refreshPromise.current;
-    return fresh?.access_token ?? null;
-  }, [session, saveSession]);
-
-  useEffect(() => {
-    if (!session?.access_token) return;
-    refreshAccessTokenHandler = refreshSession;
-    const expiresAt =
-      tokenExpiresAt(session.access_token) || (session.expires_at ? session.expires_at * 1000 : 0);
-    const refreshDelay = Math.max(
-      5000,
-      (expiresAt || Date.now() + 55 * 60 * 1000) - Date.now() - 2 * 60 * 1000,
-    );
-    const timer = window.setTimeout(() => void refreshSession(), refreshDelay);
-    const refreshIfNeeded = () => {
-      const remaining = expiresAt - Date.now();
-      if (!expiresAt || remaining < 5 * 60 * 1000) void refreshSession();
+    let cancelled = false;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
+      if (cancelled) return;
+      if (event === "PASSWORD_RECOVERY" && next) {
+        const recovery = new URLSearchParams({ type: "recovery", access_token: next.access_token, refresh_token: next.refresh_token });
+        window.location.replace(`/reset-password#${recovery}`);
+        return;
+      }
+      saveSession(fromAuthSession(next));
+    });
+    const refresh = async (): Promise<string | null> => {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) return null;
+      if (!cancelled) saveSession(fromAuthSession(data.session));
+      return data.session?.access_token ?? null;
     };
-    window.addEventListener("focus", refreshIfNeeded);
-    document.addEventListener("visibilitychange", refreshIfNeeded);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", refreshIfNeeded);
-      document.removeEventListener("visibilitychange", refreshIfNeeded);
-      if (refreshAccessTokenHandler === refreshSession) refreshAccessTokenHandler = null;
-    };
-  }, [session?.access_token, refreshSession]);
-
-  useEffect(() => {
+    refreshAccessTokenHandler = refresh;
     const restore = async () => {
-      if (new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") {
-        window.location.replace(`/reset-password${window.location.hash}`);
-        return;
-      }
-      const raw = localStorage.getItem("safar-session");
-      if (!raw) {
-        setReady(true);
-        return;
-      }
       try {
-        const saved = JSON.parse(raw) as Session;
-        const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify({ refresh_token: saved.refresh_token }),
-        });
-        if (!res.ok) throw new Error("Sesi berakhir");
-        const data = await res.json();
-        const fresh: Session = {
-          ...saved,
-          ...data,
-          user: data.user ?? saved.user,
-          refresh_token: data.refresh_token ?? saved.refresh_token,
-        };
-        saveSession(fresh);
+        const next = await restoreCloudSession(supabase.auth, localStorage.getItem("safar-session"));
+        if (!cancelled) saveSession(fromAuthSession(next));
       } catch {
-        saveSession(null);
+        if (!cancelled) saveSession(null);
       } finally {
-        setReady(true);
+        localStorage.removeItem("safar-session");
+        if (!cancelled) setReady(true);
       }
     };
-    restore();
+    void restore();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+      if (refreshAccessTokenHandler === refresh) refreshAccessTokenHandler = null;
+    };
   }, [saveSession]);
-  if (!ready)
-    return (
-      <Center>
-        <Loader2 className="animate-spin text-emerald-600" />
-      </Center>
-    );
-  if (!session)
-    return (
-      <Auth
-        onSession={(s) => {
-          saveSession(s);
-        }}
-      />
-    );
-  return <Dashboard session={session} onLogout={() => saveSession(null)} />;
+  if (!ready) return <Center><Loader2 className="animate-spin text-emerald-600" /></Center>;
+  if (!session) return <Auth onSession={saveSession} />;
+  return <Dashboard session={session} onLogout={() => {
+    void supabase.auth.signOut({ scope: "local" }).then(({ error }) => {
+      if (!error) saveSession(null);
+    });
+  }} />;
 }
 
 function Auth({ onSession }: { onSession: (s: Session) => void }) {
@@ -431,25 +349,21 @@ function Auth({ onSession }: { onSession: (s: Session) => void }) {
     setLoading(true);
     setNotice(null);
     try {
-      const endpoint = mode === "login" ? "/auth/v1/token?grant_type=password" : `/auth/v1/signup?redirect_to=${encodeURIComponent(window.location.origin)}`;
-      const res = await fetch(`${SB_URL}${endpoint}`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify(
-          mode === "login" ? { email: normalizeLoginEmail(email), password } : { email: normalizeLoginEmail(email), password, data: { full_name: name } },
-        ),
-      });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data.error_description || data.msg || data.message || "Autentikasi gagal.");
-      if (!data.access_token) {
+      const credentials = { email: normalizeLoginEmail(email), password };
+      const { data, error } = mode === "login"
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp({ ...credentials, options: {
+            data: { full_name: name }, emailRedirectTo: window.location.origin,
+          } });
+      if (error) throw error;
+      if (!data.session) {
         setNotice({
           success: true,
           message: "Pendaftaran diterima. Konfirmasikan email Anda melalui tautan yang dikirim. Akses data tetap menunggu aktivasi administrator.",
         });
         return;
       }
-      onSession(data);
+      onSession(fromAuthSession(data.session)!);
     } catch (e) {
       setNotice({
         success: false,
@@ -840,6 +754,8 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
         setNotice({ success: d.success, message: friendlyError(new Error(String(d.message ?? "")), d.message) });
       }
     } catch (e) {
+      const message = friendlyError(e, "Koneksi gagal.");
+      setProvider({ success: false, credit_balance: null, token_configured: /token mailketing belum/i.test(message) ? false : undefined, message });
       if (!options.silent) {
         setNotice({
           success: false,
@@ -1140,6 +1056,9 @@ function Overview({
         <Stat label="Email dibuka" value={stats.opened} icon={<Mail />} />
         <Stat label="Tautan diklik" value={stats.clicked} icon={<BarChart3 />} />
       </div>
+      {provider?.message && creditBalance === undefined && (
+        <NoticeBox notice={{ success: false, message: provider.message }} />
+      )}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -3414,8 +3333,9 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
           },
         });
       } else {
-        const availableCredits = getCreditBalance(provider) ?? 0;
-        if (availableCredits && recipients.length > availableCredits)
+        const availableCredits = getCreditBalance(provider);
+        if (availableCredits === undefined) throw new Error(provider?.message || "Saldo Mailketing belum terverifikasi. Hubungi admin untuk memeriksa token dan menyinkronkan saldo.");
+        if (recipients.length > availableCredits)
           throw new Error(
             `Kredit tidak cukup: perlu ${recipients.length}, tersedia ${availableCredits}.`,
           );
@@ -3999,8 +3919,8 @@ function Compose({ contacts, templates, provider, invoke, reload, sync, setNotic
                   !f.subject ||
                   !f.html_content ||
                   !recipients.length ||
-                  (provider?.credits?.data?.credits !== undefined &&
-                    recipients.length > provider.credits.data.credits)
+                  (getCreditBalance(provider) === undefined ||
+                    recipients.length > (getCreditBalance(provider) ?? 0))
                 }
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
@@ -5258,7 +5178,7 @@ function SettingsView({ token: accessToken, invoke, sync, provider, admin, setNo
             <CardTitle>Status Mailketing</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
-            <Stat label="Kredit" value={provider.credits?.data?.credits ?? "—"} icon={<Mail />} />
+            <Stat label="Kredit" value={getCreditBalance(provider) ?? "—"} icon={<Mail />} />
             <Stat
               label="Sender"
               value={provider.senders?.data?.senders?.length ?? 0}
