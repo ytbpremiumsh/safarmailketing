@@ -426,6 +426,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          delivery_token: string | null
           id: string
           mime_type: string
           name: string
@@ -436,6 +437,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          delivery_token?: string | null
           id?: string
           mime_type: string
           name: string
@@ -446,6 +448,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          delivery_token?: string | null
           id?: string
           mime_type?: string
           name?: string

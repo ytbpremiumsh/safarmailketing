@@ -134,6 +134,13 @@
       "when": 1793405321765,
       "tag": "0018_verified_roles_no_automatic_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793405360531,
+      "tag": "0019_media_delivery_capabilities",
+      "breakpoints": true
     }
   ]
 }
