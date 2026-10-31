@@ -1,5 +1,10 @@
 # Roadmap
 
+## Pemulihan 13 file asli — 31 Oktober 2026
+- [x] Salin 13 file ke media privat melalui Storage API terkelola: 42.574.457 byte, 13 ukuran/SHA-256 cocok setelah unduh ulang tujuan.
+- [x] Pertahankan 13 ID/nama/tanggal/ukuran dan owner mapped; tautan diperbarui pada 10 templates, 9 template_versions, 46 campaigns setelah verifikasi file.
+- [x] Verifikasi 13 objek dan 13 metadata; 26 GET tautan per-file (lokal + situs aktif) HTTP 200 dengan hash identik. Bucket privat, akses public Storage ditolak, worker tetap mati; tidak impor ulang tabel atau publish.
+
 ## Pemulihan login dan keamanan — 31 Oktober 2026
 - [x] Lengkapi halaman pengaturan ulang password dan pesan login; 7 tes lulus, login salah dan tautan tidak valid diuji di browser, build OK.
 - [ ] Uji pemulihan lengkap dan login owner: menunggu alamat email owner dan verifikasi kepemilikan; tidak mengirim email pemulihan ke akun uji tanpa izin.

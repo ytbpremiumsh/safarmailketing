@@ -21,6 +21,7 @@ export type Database = {
           default_from_email: string | null
           default_from_name: string | null
           id: boolean
+          max_batch_size: number
           updated_at: string
           updated_by: string | null
         }
@@ -30,6 +31,7 @@ export type Database = {
           default_from_email?: string | null
           default_from_name?: string | null
           id?: boolean
+          max_batch_size?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -39,6 +41,7 @@ export type Database = {
           default_from_email?: string | null
           default_from_name?: string | null
           id?: boolean
+          max_batch_size?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -273,8 +276,12 @@ export type Database = {
         Row: {
           bounce_count: number
           category: string
+          city: string | null
+          company: string | null
+          country: string | null
           created_at: string
           created_by: string | null
+          custom_fields: Json
           email: string
           first_name: string | null
           full_name: string | null
@@ -296,8 +303,12 @@ export type Database = {
         Insert: {
           bounce_count?: number
           category?: string
+          city?: string | null
+          company?: string | null
+          country?: string | null
           created_at?: string
           created_by?: string | null
+          custom_fields?: Json
           email: string
           first_name?: string | null
           full_name?: string | null
@@ -319,8 +330,12 @@ export type Database = {
         Update: {
           bounce_count?: number
           category?: string
+          city?: string | null
+          company?: string | null
+          country?: string | null
           created_at?: string
           created_by?: string | null
+          custom_fields?: Json
           email?: string
           first_name?: string | null
           full_name?: string | null
